@@ -243,8 +243,8 @@ github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWE
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
 github.com/matttproud/golang_protobuf_extensions v1.0.4 h1:mmDVorXM7PCGKw94cs5zkfA9PSy5pEvNWRP0ET0TIVo=
 github.com/matttproud/golang_protobuf_extensions v1.0.4/go.mod h1:BSXmuO+STAnVfrANrmjBb36TMTDstsz7MSK+HVaYKv4=
-github.com/mejango/blossm-toolbox-go v0.0.0-20261112135315-ec5d8542cda1 h1:czK512yDflKV+VAzqO7Sb02Pid0qNJNMrCCvCHHFrCA=
-github.com/mejango/blossm-toolbox-go v0.0.0-20261112135315-ec5d8542cda1/go.mod h1:reKf8sjXuF722+hFqoP8UnRLuA7+cG1ewsq7RsOzNvg=
+github.com/mejango/blossm-toolbox-go v0.0.0-20261112142659-0007d3d81d36 h1:FaqM8734xLUzYZoc7JxDFTeK+XComJtvFB1AX6v4kAw=
+github.com/mejango/blossm-toolbox-go v0.0.0-20261112142659-0007d3d81d36/go.mod h1:reKf8sjXuF722+hFqoP8UnRLuA7+cG1ewsq7RsOzNvg=
 github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882 h1:0lgqHvJWHLGW5TuObJrfyEi6+ASTKDBWikGvPqy9Yiw=
 github.com/minio/minlz v1.0.1-0.20250507153514-87eb42fe8882/go.mod h1:qT0aEB35q79LLornSzeDH75LBf3aH1MV+jB5w9Wasec=
 github.com/minio/sha256-simd v1.0.0 h1:v1ta+49hkWZyvaKwrQB8elexRqm6Y0aMLjCNsrYxo6g=
