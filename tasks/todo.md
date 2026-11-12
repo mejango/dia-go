@@ -72,7 +72,7 @@ have been removed after verification.
 - [x] Extract bottom-layer event protocol and small helpers without changing behavior.
 - [x] Restore familiar folders and update all consumers, docs and generators coherently.
 - [x] Enforce folder dependency rules with executable regression checks.
-- [ ] Verify both independent modules and prepare reviewable changes.
+- [x] Verify both independent modules and prepare reviewable changes.
 
 ## Plan refinement
 
@@ -85,4 +85,12 @@ have been removed after verification.
 
 - [x] Correct bounded Mongo contention backoff and prove existing uncertainty/read contracts.
 - [x] Join native fixture workers on failure and reproduce concurrent Dia completion repeatedly.
-- [ ] Reverify final public pin, native adapters/application and containers, preserving failed evidence.
+- [x] Reverify final public pin, native adapters/application and containers, preserving failed evidence.
+
+### Hierarchy delivery review
+
+All local hierarchy and final public-pin gates passed; exact commands, source
+hashes, initial failure and recovery evidence live in docs/HIERARCHY_VERIFICATION.md.
+The final framework runtime pin is d45c8b4. Original JS and prior verification
+snapshots remain preserved. Review branches are prepared; no new merge or live
+deployment is authorized by this implementation step.
