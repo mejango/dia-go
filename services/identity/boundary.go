@@ -1,8 +1,10 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
+import (
+	"context"
 
-import "context"
+	coremodel "github.com/mejango/dia-go/models/core"
+)
 
 // AuthenticateConnection verifies signature, claims, and current key revocation.
 func (s *Service) AuthenticateConnection(ctx context.Context, token string) (Claims, error) {

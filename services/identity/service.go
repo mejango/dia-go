@@ -1,7 +1,5 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/hmac"
@@ -12,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mejango/blossm-toolbox-go/security/authn"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	"github.com/mejango/blossm-toolbox-go/lib/authentication_error"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 var (
@@ -25,9 +24,9 @@ var (
 
 // Store is the consumer contract. Append must atomically validate and commit the entire batch.
 type Store interface {
-	Append(context.Context, []eventstore.Input) ([]eventstore.Receipt, error)
-	Aggregate(context.Context, eventstore.Root) (eventstore.Aggregate, error)
-	Query(context.Context, string, string, string, []eventstore.Predicate) ([]eventstore.Aggregate, error)
+	Append(context.Context, []eventlib.Input) ([]eventlib.Receipt, error)
+	Aggregate(context.Context, eventlib.Root) (eventlib.Aggregate, error)
+	Query(context.Context, string, string, string, []eventlib.Predicate) ([]eventlib.Aggregate, error)
 }
 type Service struct {
 	Store         Store
@@ -63,9 +62,9 @@ func validKey(key string) error {
 func same(a, b coremodel.Ref) bool { return a == b }
 
 // load adapts the store last-event version (-1 absent) to the next expected count.
-func (s *Service) load(ctx context.Context, r coremodel.Ref, out any) (eventstore.Aggregate, error) {
+func (s *Service) load(ctx context.Context, r coremodel.Ref, out any) (eventlib.Aggregate, error) {
 	if s.Store == nil {
-		return eventstore.Aggregate{}, ErrUnavailable
+		return eventlib.Aggregate{}, ErrUnavailable
 	}
 	a, e := s.Store.Aggregate(ctx, r)
 	if e != nil {
@@ -77,7 +76,7 @@ func (s *Service) load(ctx context.Context, r coremodel.Ref, out any) (eventstor
 	}
 	return a, e
 }
-func (s *Service) event(r coremodel.Ref, action, key string, version int64, payload any) eventstore.Input {
+func (s *Service) event(r coremodel.Ref, action, key string, version int64, payload any) eventlib.Input {
 	b, e := json.Marshal(payload)
 	if e != nil {
 		panic(e)
@@ -85,9 +84,9 @@ func (s *Service) event(r coremodel.Ref, action, key string, version int64, payl
 	// Event timestamps reflect preparation time; persisted operation receipts retain
 	// the original inputs for exact retries.
 	key = stableID(r.Key(), action+"/"+key)
-	return eventstore.Input{Root: r, Action: action, Key: key, Expected: &version, Created: s.now().Format(time.RFC3339Nano), Payload: b, Transaction: eventstore.Transaction{ID: key, Issued: s.now().Format(time.RFC3339Nano)}}
+	return eventlib.Input{Root: r, Action: action, Key: key, Expected: &version, Created: s.now().Format(time.RFC3339Nano), Payload: b, Transaction: eventlib.Transaction{ID: key, Issued: s.now().Format(time.RFC3339Nano)}}
 }
-func (s *Service) append(ctx context.Context, events ...eventstore.Input) error {
+func (s *Service) append(ctx context.Context, events ...eventlib.Input) error {
 	if s.Store == nil {
 		return ErrUnavailable
 	}

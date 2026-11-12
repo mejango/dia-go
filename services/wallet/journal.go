@@ -9,8 +9,10 @@ import (
 	"strconv"
 
 	"github.com/ethereum/go-ethereum/common"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/onchain/evm"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
 )
 
 // Journal commits immutable signed bytes and the account nonce frontier in one
@@ -93,8 +95,8 @@ func (j Journal) Put(ctx context.Context, p evm.Prepared) error {
 	if next > p.Nonce {
 		return evm.ErrNonceConflict
 	}
-	_, e = j.Store.Append(ctx, []eventstore.Input{event(root(j.Network, "transaction", p.ID), "prepare", "wallet/tx/"+p.ID, 0, p), event(nroot, "reserve", fmt.Sprintf("wallet/nonce/%s/%d", nroot.ID, p.Nonce), a.Version+1, nonceState{fmt.Sprint(p.Nonce + 1)})})
-	if errors.Is(e, eventstore.ErrConflict) || errors.Is(e, eventstore.ErrIdempotency) {
+	_, e = j.Store.Append(ctx, []eventlib.Input{event(root(j.Network, "transaction", p.ID), "prepare", "wallet/tx/"+p.ID, 0, p), event(nroot, "reserve", fmt.Sprintf("wallet/nonce/%s/%d", nroot.ID, p.Nonce), a.Version+1, nonceState{fmt.Sprint(p.Nonce + 1)})})
+	if errors.Is(e, eventlib.ErrConflict) || errors.Is(e, eventlib.ErrIdempotency) {
 		if existing, readErr := j.Get(ctx, p.ID); readErr == nil {
 			equal, err := samePrepared(existing, p)
 			if err != nil {
@@ -113,11 +115,11 @@ func (j Journal) Put(ctx context.Context, p evm.Prepared) error {
 }
 
 func samePrepared(a, b evm.Prepared) (bool, error) {
-	left, err := eventstore.Digest(a)
+	left, err := canonicaljson.Digest(a)
 	if err != nil {
 		return false, err
 	}
-	right, err := eventstore.Digest(b)
+	right, err := canonicaljson.Digest(b)
 	if err != nil {
 		return false, err
 	}

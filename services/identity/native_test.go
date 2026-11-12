@@ -2,8 +2,6 @@
 
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/ecdsa"
@@ -11,13 +9,16 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	mongoStore "github.com/mejango/blossm-toolbox-go/storage/mongo"
-	"github.com/mejango/blossm-toolbox-go/storage/postgres"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	mongoStore "github.com/mejango/blossm-toolbox-go/vendors/mongodb"
+	"github.com/mejango/blossm-toolbox-go/vendors/postgres"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 func TestNativeSessionStart(t *testing.T) {
@@ -54,7 +55,7 @@ func TestNativeAccountAndSystemJourney(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			ctx := context.Background()
 			namespace := fmt.Sprintf("dia_identity_%d", time.Now().UnixNano())
-			var backend eventstore.Backend
+			var backend eventlib.Backend
 			var e error
 			if kind == "postgres" {
 				url := os.Getenv("POSTGRES_URL")
@@ -96,12 +97,19 @@ func TestNativeAccountAndSystemJourney(t *testing.T) {
 			}
 			close(gate)
 			var account SessionResult
+			var answerErrors []error
+			// Drain every worker before failing: a remaining transaction may still
+			// use the backend and its test-scoped diagnostics.
 			for i := 0; i < 2; i++ {
 				result := <-answers
 				if result.err != nil {
-					t.Fatal("concurrent same-key answer", result.err)
+					answerErrors = append(answerErrors, result.err)
+					continue
 				}
 				account = result.session
+			}
+			if len(answerErrors) != 0 {
+				t.Fatal("concurrent same-key answer", errors.Join(answerErrors...))
 			}
 			if _, e = s.AuthenticateAccess(ctx, start.Token); !errors.Is(e, ErrUnauthorized) {
 				t.Fatal("stale anonymous token", e)

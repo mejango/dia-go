@@ -2,8 +2,6 @@
 
 package integration
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"bytes"
 	"context"
@@ -11,11 +9,12 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
-	"github.com/mejango/dia-go/httpapi"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/mejango/dia-go/httpapi"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 

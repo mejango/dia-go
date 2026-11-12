@@ -52,3 +52,7 @@ Core identity, system, communications and custodial direct-EVM flows are retaine
 Relayr payments and JB/shop remain explicitly deferred. No live cloud deployment
 or blockchain/provider verification is claimed. Deployment generation is
 preparation only; execution requires separate authorization.
+
+Framework public paths now follow the [familiar hierarchy](docs/HIERARCHY.md).
+The previous independent-split evidence is historical; fresh hierarchy gates
+are parent-owned and in progress. Dia retains its application directory layout.

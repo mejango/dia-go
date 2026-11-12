@@ -1,11 +1,11 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"testing"
 	"time"
+
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 type signingFunc func(context.Context, []byte) ([]byte, error)

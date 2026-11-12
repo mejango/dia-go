@@ -1,9 +1,11 @@
 package core
 
-import "github.com/mejango/blossm-toolbox-go/stores/event"
+import (
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+)
 
 // Ref uses the same complete identity as persisted events.
-type Ref = eventstore.Root
+type Ref = eventlib.Root
 
 type Device struct {
 	Type     string `json:"type"`
@@ -40,18 +42,18 @@ type AccountState struct {
 }
 
 type ChallengeState struct {
-	RecoveryAttempts int                `json:"recoveryAttempts"`
-	AnswerKey        string             `json:"answerKey"`
-	ProofHash        string             `json:"proofHash"`
-	RequestHash      string             `json:"requestHash"`
-	Attempts         int                `json:"attempts"`
-	Code             string             `json:"code"`
-	Expires          int64              `json:"expires"`
-	Answered         string             `json:"answered"`
-	Session          Ref                `json:"session"`
-	Upgrade          SessionContext     `json:"upgrade"`
-	Events           []eventstore.Input `json:"events"`
-	Delivery         string             `json:"delivery"`
+	RecoveryAttempts int              `json:"recoveryAttempts"`
+	AnswerKey        string           `json:"answerKey"`
+	ProofHash        string           `json:"proofHash"`
+	RequestHash      string           `json:"requestHash"`
+	Attempts         int              `json:"attempts"`
+	Code             string           `json:"code"`
+	Expires          int64            `json:"expires"`
+	Answered         string           `json:"answered"`
+	Session          Ref              `json:"session"`
+	Upgrade          SessionContext   `json:"upgrade"`
+	Events           []eventlib.Input `json:"events"`
+	Delivery         string           `json:"delivery"`
 }
 
 type PrincipalState struct {

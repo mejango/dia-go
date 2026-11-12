@@ -1,20 +1,21 @@
 package httpapi
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"github.com/mejango/blossm-toolbox-go/transport"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/procedures/command"
-	"github.com/mejango/blossm-toolbox-go/rpc"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	commandrpc "github.com/mejango/blossm-toolbox-go/procedures/command/rpc"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
+	"github.com/mejango/blossm-toolbox-go/rpc/generic"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -23,14 +24,14 @@ func delegatedFixture(t *testing.T) (dia.JWT, *dia.Service, *authState, command.
 	jwt, claims := gatewayJWT(t)
 	jwt.Audience = "n/child"
 	claims.Expires = time.Now().Unix() + 30
-	state := &authState{rows: map[eventstore.Root]eventstore.Aggregate{}}
+	state := &authState{rows: map[eventlib.Root]eventlib.Aggregate{}}
 	state.put(claims.Context.Session, coremodel.SessionState{Expires: claims.Expires, Principal: claims.Context.Principal})
 	service := &dia.Service{JWT: &jwt, Store: state, Network: "n"}
 	id, err := transport.IdentityFromClaims(claims)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return jwt, service, state, command.Request{ID: "parent", Issued: "2026-11-12T00:00:00Z", Context: id.Context, Claims: id.Claims, Transaction: eventstore.Transaction{ID: "transaction", Issued: "2026-11-12T00:00:00Z", Path: []eventstore.Trace{{Network: "n", Host: "parent", Procedure: "command", Hash: "v1"}}}}
+	return jwt, service, state, command.Request{ID: "parent", Issued: "2026-11-12T00:00:00Z", Context: id.Context, Claims: id.Claims, Transaction: eventlib.Transaction{ID: "transaction", Issued: "2026-11-12T00:00:00Z", Path: []eventlib.Trace{{Network: "n", Host: "parent", Procedure: "command", Hash: "v1"}}}}
 }
 
 func TestDelegatedCommandRealCredentialComposition(t *testing.T) {
@@ -45,7 +46,7 @@ func TestDelegatedCommandRealCredentialComposition(t *testing.T) {
 		t.Fatal(err)
 	}
 	captured := make(chan command.Request, 1)
-	child := transport.Framework{Authorize: verify, Commands: map[string]command.Procedure{"reserve": {Trace: &eventstore.Trace{Network: "n", Host: "child", Procedure: "command", Hash: "v2"}, Main: func(_ context.Context, in command.Request) (command.Result, error) {
+	child := transport.Framework{Authorize: verify, Commands: map[string]command.Procedure{"reserve": {Trace: &eventlib.Trace{Network: "n", Host: "child", Procedure: "command", Hash: "v2"}, Main: func(_ context.Context, in command.Request) (command.Result, error) {
 		captured <- in
 		return command.Result{Response: command.Contribution{StatusCode: 204}}, nil
 	}}}}
@@ -59,13 +60,13 @@ func TestDelegatedCommandRealCredentialComposition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := transport.CommandClient{RPC: wire, Target: "n/child", Authorize: mint}
+	client := commandrpc.CommandClient{RPC: wire, Target: "n/child", Authorize: mint}
 	// The parent transport.Framework authenticates a real access token and its Main invokes
 	// the real minter, rather than injecting an invented static delegated header.
 	userJWT := jwt
 	userJWT.Audience = "n"
 	var original dia.Claims
-	if err = eventstore.Decode(parent.Claims, &original); err != nil {
+	if err = canonicaljson.Decode(parent.Claims, &original); err != nil {
 		t.Fatal(err)
 	}
 	userToken, err := userJWT.Sign(ctx, original)
@@ -87,7 +88,7 @@ func TestDelegatedCommandRealCredentialComposition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, _ := eventstore.Encode(parent)
+	body, _ := canonicaljson.Encode(parent)
 	request := httptest.NewRequest("POST", "/commands/copy", bytes.NewReader(body))
 	request.Header.Set("Authorization", "Bearer "+userToken)
 	response := httptest.NewRecorder()
@@ -97,7 +98,7 @@ func TestDelegatedCommandRealCredentialComposition(t *testing.T) {
 	}
 	in := <-captured
 	var delegated dia.Claims
-	if err = eventstore.Decode(in.Claims, &delegated); err != nil {
+	if err = canonicaljson.Decode(in.Claims, &delegated); err != nil {
 		t.Fatal(err)
 	}
 	if delegated.Subject != "n/parent" || delegated.Context != original.Context || delegated.Expires != original.Expires || len(delegated.Audience) != 1 || delegated.Audience[0] != "n/child" {
@@ -128,7 +129,7 @@ func TestDelegatedCommandRejectsTamperedAuthority(t *testing.T) {
 	for _, field := range []string{"valid", "id", "issued", "path"} {
 		t.Run(field, func(t *testing.T) {
 			in := parent
-			in.Transaction = eventstore.CloneEvent(eventstore.Event{Input: eventstore.Input{Transaction: parent.Transaction}}).Input.Transaction
+			in.Transaction = eventlib.CloneEvent(eventlib.Event{Input: eventlib.Input{Transaction: parent.Transaction}}).Input.Transaction
 			switch field {
 			case "id":
 				in.Transaction.ID = "other"
@@ -137,7 +138,7 @@ func TestDelegatedCommandRejectsTamperedAuthority(t *testing.T) {
 			case "path":
 				in.Transaction.Path[0].Host = "forged"
 			}
-			body, _ := eventstore.Encode(in)
+			body, _ := canonicaljson.Encode(in)
 			r := httptest.NewRequest("POST", "/commands/reserve", bytes.NewReader(body))
 			r.Pattern = "POST /commands/{name}"
 			r.SetPathValue("name", "reserve")
@@ -156,7 +157,7 @@ func TestDelegatedCommandRejectsTamperedAuthority(t *testing.T) {
 	for _, field := range []string{"peer", "audience", "multiple-audiences", "kind", "jti"} {
 		t.Run(field, func(t *testing.T) {
 			var c dia.Claims
-			_ = eventstore.Decode(id.Claims, &c)
+			_ = canonicaljson.Decode(id.Claims, &c)
 			switch field {
 			case "peer":
 				c.Subject = "other"
@@ -191,7 +192,7 @@ func TestDelegatedCommandRejectsTamperedAuthority(t *testing.T) {
 		t.Fatal("minted after cancellation")
 	}
 	var original dia.Claims
-	_ = eventstore.Decode(parent.Claims, &original)
+	_ = canonicaljson.Decode(parent.Claims, &original)
 	state.put(original.Context.Session, coremodel.SessionState{Expires: original.Expires, Principal: original.Context.Principal, Terminated: "revoked"})
 	if _, err = mint(ctx, parent); err == nil {
 		t.Fatal("minted revoked session")
@@ -204,11 +205,11 @@ func TestDelegatedCommandRejectsTamperedAuthority(t *testing.T) {
 func TestDelegatedCommandExpiryCeiling(t *testing.T) {
 	jwt, service, state, parent := delegatedFixture(t)
 	var claims dia.Claims
-	_ = eventstore.Decode(parent.Claims, &claims)
+	_ = canonicaljson.Decode(parent.Claims, &claims)
 	now := time.Now()
 	jwt.Now = func() time.Time { return now }
 	claims.Expires = now.Add(time.Hour).Unix()
-	parent.Claims, _ = eventstore.Encode(claims)
+	parent.Claims, _ = canonicaljson.Encode(claims)
 	state.put(claims.Context.Session, coremodel.SessionState{Expires: claims.Expires, Principal: claims.Context.Principal})
 	mint, _ := DelegatedCommandAuthorizer(jwt, service, "n/parent")
 	headers, err := mint(context.Background(), parent)
@@ -220,7 +221,7 @@ func TestDelegatedCommandExpiryCeiling(t *testing.T) {
 		t.Fatal("short lifetime not enforced", c, err)
 	}
 	claims.Expires = now.Add(-time.Second).Unix()
-	parent.Claims, _ = eventstore.Encode(claims)
+	parent.Claims, _ = canonicaljson.Encode(claims)
 	if _, err = mint(context.Background(), parent); err == nil {
 		t.Fatal("minted expired parent")
 	}

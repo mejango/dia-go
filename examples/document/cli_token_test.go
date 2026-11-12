@@ -9,19 +9,20 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	coremodel "github.com/mejango/dia-go/models/core"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mejango/blossm-toolbox-go/cli"
+	"github.com/mejango/blossm-toolbox-go/cli/blossm"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	eventstore "github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
 	projection "github.com/mejango/blossm-toolbox-go/procedures/projection"
-	runtimeauth "github.com/mejango/blossm-toolbox-go/runtime/auth"
-	eventstore "github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	runtimeauth "github.com/mejango/blossm-toolbox-go/procedures/server/auth"
 	serviceapp "github.com/mejango/dia-go/examples/document"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -62,21 +63,21 @@ func internalExample() cli.Config {
 }
 
 type tokenRoots struct {
-	eventstore.Reader
-	root eventstore.Root
+	eventlib.Reader
+	root eventlib.Root
 }
 
-func (r tokenRoots) Roots(ctx context.Context, yield func(eventstore.Root) error) error {
+func (r tokenRoots) Roots(ctx context.Context, yield func(eventlib.Root) error) error {
 	return yield(r.root)
 }
-func (r tokenRoots) Count(context.Context, eventstore.Root) (int64, error) { return 1, nil }
+func (r tokenRoots) Count(context.Context, eventlib.Root) (int64, error) { return 1, nil }
 
 type tokenBackend struct {
-	eventstore.Backend
-	root eventstore.Root
+	eventlib.Backend
+	root eventlib.Root
 }
 
-func (b *tokenBackend) View(ctx context.Context, fn func(eventstore.Reader) error) error {
+func (b *tokenBackend) View(ctx context.Context, fn func(eventlib.Reader) error) error {
 	return fn(tokenRoots{root: b.root})
 }
 
@@ -100,7 +101,7 @@ func TestInternalTokenDrivesServiceAppReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	root := eventstore.Root{Network: c.Signing.Audience, Service: "documents", Domain: serviceapp.Domain, ID: "doc"}
+	root := eventlib.Root{Network: c.Signing.Audience, Service: "documents", Domain: serviceapp.Domain, ID: "doc"}
 	backend := &tokenBackend{root: root}
 	identityBackend := &tokenBackend{root: root}
 	producer := &tokenReplay{}

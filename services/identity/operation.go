@@ -1,20 +1,21 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 type operationState struct {
-	Digest  string             `json:"digest"`
-	Inputs  []eventstore.Input `json:"inputs"`
-	Request json.RawMessage    `json:"request,omitempty"`
+	Digest  string           `json:"digest"`
+	Inputs  []eventlib.Input `json:"inputs"`
+	Request json.RawMessage  `json:"request,omitempty"`
 }
 type operationReducer struct{}
 
@@ -31,18 +32,18 @@ func (operationReducer) Normalize(action string, raw json.RawMessage) (json.RawM
 	}
 	return json.Marshal(st)
 }
-func (r operationReducer) Apply(state json.RawMessage, event eventstore.Event) (json.RawMessage, error) {
+func (r operationReducer) Apply(state json.RawMessage, event eventlib.Event) (json.RawMessage, error) {
 	if event.Number != 0 {
 		return nil, errors.New("operation already committed")
 	}
 	return r.Normalize(event.Input.Action, event.Input.Payload)
 }
-func semanticDigest(events []eventstore.Input) string {
-	copied := append([]eventstore.Input(nil), events...)
+func semanticDigest(events []eventlib.Input) string {
+	copied := append([]eventlib.Input(nil), events...)
 	for i := range copied {
 		copied[i].Created = ""
 		copied[i].Expected = nil
-		copied[i].Transaction = eventstore.Transaction{}
+		copied[i].Transaction = eventlib.Transaction{}
 	}
 	b, _ := json.Marshal(copied)
 	h := sha256.Sum256(b)
@@ -51,13 +52,13 @@ func semanticDigest(events []eventstore.Input) string {
 
 // appendAtomic stores a receipt alongside all domain effects. Exact prepared inputs
 // remain available after a lost response. A reused key with changed intent fails.
-func (s *Service) appendAtomic(ctx context.Context, events []eventstore.Input) error {
+func (s *Service) appendAtomic(ctx context.Context, events []eventlib.Input) error {
 	return s.appendAtomicRequest(ctx, events, nil, coremodel.Ref{})
 }
 
 // appendAtomicRequest binds an explicitly supplied command request rather than
 // derived targets. Inputs still retain the exact effects committed atomically.
-func (s *Service) appendAtomicRequest(ctx context.Context, events []eventstore.Input, request json.RawMessage, receipt coremodel.Ref) error {
+func (s *Service) appendAtomicRequest(ctx context.Context, events []eventlib.Input, request json.RawMessage, receipt coremodel.Ref) error {
 	if len(events) == 0 {
 		return ErrInvalid
 	}
@@ -76,12 +77,12 @@ func (s *Service) appendAtomicRequest(ctx context.Context, events []eventstore.I
 	}
 	if a.Version > 0 {
 		if op.Digest != digest {
-			return eventstore.ErrIdempotency
+			return eventlib.ErrIdempotency
 		}
 		return nil
 	}
 	op = operationState{Digest: digest, Inputs: events, Request: request}
-	batch := append(append([]eventstore.Input(nil), events...), s.event(r, "commit", events[0].Key+"/receipt", 0, op))
+	batch := append(append([]eventlib.Input(nil), events...), s.event(r, "commit", events[0].Key+"/receipt", 0, op))
 	receipts, e := s.Store.Append(ctx, batch)
 	if e != nil {
 		// Backend labels do not decide whether another identical attempt committed.
@@ -92,7 +93,7 @@ func (s *Service) appendAtomicRequest(ctx context.Context, events []eventstore.I
 			if committed.Digest == digest {
 				return nil
 			}
-			return eventstore.ErrIdempotency
+			return eventlib.ErrIdempotency
 		}
 		return e
 	}
@@ -100,8 +101,8 @@ func (s *Service) appendAtomicRequest(ctx context.Context, events []eventstore.I
 		return errors.New("incomplete commit receipts")
 	}
 	for _, receipt := range receipts {
-		if receipt.Outcome != eventstore.Committed && receipt.Outcome != eventstore.Duplicate {
-			return eventstore.ErrUncertain
+		if receipt.Outcome != eventlib.Committed && receipt.Outcome != eventlib.Duplicate {
+			return eventlib.ErrUncertain
 		}
 	}
 	return nil
@@ -133,16 +134,16 @@ func (s *Service) committedPayload(ctx context.Context, root coremodel.Ref, acti
 	if e != nil {
 		return false, e
 	}
-	wanted, e = eventstore.Canonical(wanted)
+	wanted, e = canonicaljson.Canonical(wanted)
 	if e != nil {
 		return false, e
 	}
-	stored, e := eventstore.Canonical(op.Inputs[0].Payload)
+	stored, e := canonicaljson.Canonical(op.Inputs[0].Payload)
 	if e != nil {
 		return false, e
 	}
 	if string(wanted) != string(stored) {
-		return false, eventstore.ErrIdempotency
+		return false, eventlib.ErrIdempotency
 	}
 	return true, nil
 }

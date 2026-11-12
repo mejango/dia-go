@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mejango/blossm-toolbox-go/cli"
+	"github.com/mejango/blossm-toolbox-go/cli/blossm"
 )
 
 // Validate checks generic configuration first, then the selected application's

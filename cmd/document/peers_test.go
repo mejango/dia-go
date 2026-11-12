@@ -1,7 +1,5 @@
 package main
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/ecdsa"
@@ -9,41 +7,43 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"github.com/mejango/dia-go/httpapi"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
 
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/procedures/command"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
+	"github.com/mejango/dia-go/httpapi"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
 type peerState struct {
 	mu      sync.Mutex
-	root    eventstore.Root
+	root    eventlib.Root
 	session coremodel.SessionState
 }
 
-func (s *peerState) Aggregate(ctx context.Context, root eventstore.Root) (eventstore.Aggregate, error) {
+func (s *peerState) Aggregate(ctx context.Context, root eventlib.Root) (eventlib.Aggregate, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return eventstore.Aggregate{}, err
+		return eventlib.Aggregate{}, err
 	}
 	if root != s.root {
-		return eventstore.Aggregate{Root: root, Version: -1}, nil
+		return eventlib.Aggregate{Root: root, Version: -1}, nil
 	}
 	raw, err := json.Marshal(s.session)
-	return eventstore.Aggregate{Root: root, Version: 0, State: raw}, err
+	return eventlib.Aggregate{Root: root, Version: 0, State: raw}, err
 }
-func (*peerState) Append(context.Context, []eventstore.Input) ([]eventstore.Receipt, error) {
+func (*peerState) Append(context.Context, []eventlib.Input) ([]eventlib.Receipt, error) {
 	return nil, errors.New("unexpected fixture mutation")
 }
-func (*peerState) Query(context.Context, string, string, string, []eventstore.Predicate) ([]eventstore.Aggregate, error) {
+func (*peerState) Query(context.Context, string, string, string, []eventlib.Predicate) ([]eventlib.Aggregate, error) {
 	return nil, errors.New("unexpected fixture query")
 }
 
@@ -54,8 +54,8 @@ func TestConfiguredDelegationOverHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	jwt := dia.JWT{Signer: dia.LocalSigner{Key: key}, VerifyKey: &key.PublicKey, Issuer: "dia.n", Audience: "n"}
-	session := eventstore.Root{Network: "n", Service: "core", Domain: "session", ID: "session"}
-	principal := eventstore.Root{Network: "n", Service: "core", Domain: "principal", ID: "principal"}
+	session := eventlib.Root{Network: "n", Service: "core", Domain: "session", ID: "session"}
+	principal := eventlib.Root{Network: "n", Service: "core", Domain: "principal", ID: "principal"}
 	now := time.Now()
 	state := &peerState{root: session, session: coremodel.SessionState{Started: now.Unix(), Expires: now.Add(time.Hour).Unix(), Principal: principal}}
 	identity := &dia.Service{Store: state, JWT: &jwt, Network: "n"}
@@ -91,26 +91,26 @@ func TestConfiguredDelegationOverHTTP(t *testing.T) {
 		t.Fatal("wrong configured peer direction")
 	}
 	claims := dia.Claims{Issuer: jwt.Issuer, Audience: []string{"n"}, Subject: principal.ID, ID: "access", Kind: "access", NotBefore: now.Unix(), Expires: state.session.Expires, Context: coremodel.SessionContext{Network: "n", Session: session, Principal: principal}}
-	encodedContext, err := eventstore.Encode(claims.Context)
+	encodedContext, err := canonicaljson.Encode(claims.Context)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var values command.Context
-	if err = eventstore.Decode(encodedContext, &values); err != nil {
+	if err = canonicaljson.Decode(encodedContext, &values); err != nil {
 		t.Fatal(err)
 	}
-	rawClaims, err := eventstore.Encode(claims)
+	rawClaims, err := canonicaljson.Encode(claims)
 	if err != nil {
 		t.Fatal(err)
 	}
 	issued := now.UTC().Format(time.RFC3339Nano)
-	parent := command.Request{ID: "parent", Issued: issued, Context: values, Claims: rawClaims, Transaction: eventstore.Transaction{ID: "parent-transaction", Issued: issued, Path: []eventstore.Trace{{Network: "n", Host: "source", Procedure: "command", Hash: "v1"}}}}
+	parent := command.Request{ID: "parent", Issued: issued, Context: values, Claims: rawClaims, Transaction: eventlib.Transaction{ID: "parent-transaction", Issued: issued, Path: []eventlib.Trace{{Network: "n", Host: "source", Procedure: "command", Hash: "v1"}}}}
 	if _, err = sender.outbound.Execute(ctx, parent, "set", "copy-document", command.Request{}); err != nil {
 		t.Fatal(err)
 	}
 	received := <-captured
 	var delegated dia.Claims
-	if err = eventstore.Decode(received.Claims, &delegated); err != nil {
+	if err = canonicaljson.Decode(received.Claims, &delegated); err != nil {
 		t.Fatal(err)
 	}
 	if delegated.Subject != "n/source" || len(delegated.Audience) != 1 || delegated.Audience[0] != "n/destination" || delegated.Context != claims.Context || delegated.Expires > claims.Expires || received.Transaction.ID != parent.Transaction.ID {

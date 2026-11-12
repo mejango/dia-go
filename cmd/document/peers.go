@@ -1,16 +1,17 @@
 package main
 
 import (
-	"github.com/mejango/dia-go/httpapi"
 	"net/http"
 
-	"github.com/mejango/blossm-toolbox-go/rpc"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	commandrpc "github.com/mejango/blossm-toolbox-go/procedures/command/rpc"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
+	"github.com/mejango/blossm-toolbox-go/rpc/generic"
+	"github.com/mejango/dia-go/httpapi"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
 type peers struct {
-	outbound  *transport.CommandClient
+	outbound  *commandrpc.CommandClient
 	delegated transport.TokenVerifier
 	close     func()
 }
@@ -45,7 +46,7 @@ func configurePeers(c config, jwt dia.JWT, identity *dia.Service) (peers, error)
 		httpTransport.CloseIdleConnections()
 		return result, err
 	}
-	result.outbound = &transport.CommandClient{RPC: wire, Target: target, Authorize: authorize}
+	result.outbound = &commandrpc.CommandClient{RPC: wire, Target: target, Authorize: authorize}
 	result.close = httpTransport.CloseIdleConnections
 	return result, nil
 }

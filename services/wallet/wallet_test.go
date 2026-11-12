@@ -18,8 +18,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/onchain/evm"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"github.com/mejango/dia-go/services/identity"
 )
 
@@ -106,7 +107,7 @@ func TestTransactionReducerAndCanonicalNonce(t *testing.T) {
 	}
 	defer key.D.SetInt64(0)
 	p := signedFixture(t, key, "prepared", (1<<53)+1)
-	raw, err := eventstore.Encode(p)
+	raw, err := canonicaljson.Encode(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,14 +120,14 @@ func TestTransactionReducerAndCanonicalNonce(t *testing.T) {
 	if err = json.Unmarshal(out, &recovered); err != nil || recovered.Nonce != p.Nonce || !bytes.Equal(recovered.Raw, p.Raw) {
 		t.Fatal(recovered, err)
 	}
-	ev := eventstore.Event{Input: eventstore.Input{Root: root("local", "transaction", "wrong-root"), Action: "prepare", Payload: raw}}
+	ev := eventlib.Event{Input: eventlib.Input{Root: root("local", "transaction", "wrong-root"), Action: "prepare", Payload: raw}}
 	if _, err = r.Apply(json.RawMessage(`{}`), ev); err == nil {
 		t.Fatal("mismatched root identity accepted")
 	}
 	for _, change := range []func(*evm.Prepared){func(p *evm.Prepared) { p.Nonce++ }, func(p *evm.Prepared) { p.Intent = common.Hash{} }, func(p *evm.Prepared) { p.From[0] ^= 1 }, func(p *evm.Prepared) { p.ChainID = "10" }} {
 		bad := p
 		change(&bad)
-		raw, err = eventstore.Encode(bad)
+		raw, err = canonicaljson.Encode(bad)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go/cloudtasks v1.21.0
 	github.com/ethereum/go-ethereum v1.17.10
 	github.com/googleapis/gax-go/v2 v2.27.0
-	github.com/mejango/blossm-toolbox-go v0.0.0-20261112142659-0007d3d81d36
+	github.com/mejango/blossm-toolbox-go v0.0.0-20261112155157-d45c8b4e036c
 )
 
 require (

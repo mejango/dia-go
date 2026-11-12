@@ -2,8 +2,6 @@
 
 package httpapi
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"bytes"
 	"context"
@@ -20,9 +18,11 @@ import (
 	"testing"
 	"time"
 
-	mongoStore "github.com/mejango/blossm-toolbox-go/storage/mongo"
-	"github.com/mejango/blossm-toolbox-go/storage/postgres"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	mongoStore "github.com/mejango/blossm-toolbox-go/vendors/mongodb"
+	"github.com/mejango/blossm-toolbox-go/vendors/postgres"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -62,7 +62,7 @@ func TestNativeHTTPRecovery(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			ctx := context.Background()
 			namespace := fmt.Sprintf("http_recovery_%d", time.Now().UnixNano())
-			var backend eventstore.Backend
+			var backend eventlib.Backend
 			var err error
 			if kind == "postgres" {
 				if os.Getenv("POSTGRES_URL") == "" {
@@ -147,7 +147,7 @@ func TestNativeHTTPRecovery(t *testing.T) {
 			expected := aggregate.Version + 1
 			payload, _ := json.Marshal(map[string]any{"roles": []coremodel.RoleGrant{{ID: "CommsSender", Subject: subject}}})
 			stamp := time.Now().UTC().Format(time.RFC3339Nano)
-			_, err = store.Append(ctx, []eventstore.Input{{Root: subject, Action: "add-roles", Key: "fixture-authority", Expected: &expected, Created: stamp, Payload: payload, Transaction: eventstore.Transaction{ID: "fixture-authority", Issued: stamp}}})
+			_, err = store.Append(ctx, []eventlib.Input{{Root: subject, Action: "add-roles", Key: "fixture-authority", Expected: &expected, Created: stamp, Payload: payload, Transaction: eventlib.Transaction{ID: "fixture-authority", Issued: stamp}}})
 			if err != nil {
 				t.Fatal(err)
 			}

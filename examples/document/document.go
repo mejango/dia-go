@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"strings"
 
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/procedures/command"
+	commandrpc "github.com/mejango/blossm-toolbox-go/procedures/command/rpc"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
 	"github.com/mejango/blossm-toolbox-go/procedures/fact"
 	"github.com/mejango/blossm-toolbox-go/procedures/job"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -21,8 +23,8 @@ const Domain = "document"
 const ViewName = "documents"
 
 type Document struct {
-	Owner eventstore.Root `json:"owner"`
-	Text  string          `json:"text"`
+	Owner eventlib.Root `json:"owner"`
+	Text  string        `json:"text"`
 }
 type SetDocument struct {
 	Text     string `json:"text"`
@@ -32,25 +34,25 @@ type documentReducer struct{}
 
 func (documentReducer) Normalize(action string, payload json.RawMessage) (json.RawMessage, error) {
 	var d Document
-	if action != "set" || eventstore.Decode(payload, &d) != nil || d.Owner.Network == "" || d.Owner.Service != "core" || d.Owner.Domain != "principal" || d.Owner.ID == "" || len(d.Text) > 4096 {
-		return nil, eventstore.ErrInvalid
+	if action != "set" || canonicaljson.Decode(payload, &d) != nil || d.Owner.Network == "" || d.Owner.Service != "core" || d.Owner.Domain != "principal" || d.Owner.ID == "" || len(d.Text) > 4096 {
+		return nil, eventlib.ErrInvalid
 	}
-	return eventstore.Encode(d)
+	return canonicaljson.Encode(d)
 }
-func (r documentReducer) Apply(state json.RawMessage, e eventstore.Event) (json.RawMessage, error) {
+func (r documentReducer) Apply(state json.RawMessage, e eventlib.Event) (json.RawMessage, error) {
 	b, err := r.Normalize(e.Input.Action, e.Input.Payload)
 	if err != nil {
 		return nil, err
 	}
 	var next, old Document
-	if err = eventstore.Decode(b, &next); err != nil {
+	if err = canonicaljson.Decode(b, &next); err != nil {
 		return nil, err
 	}
-	if err = eventstore.Decode(state, &old); err != nil {
+	if err = canonicaljson.Decode(state, &old); err != nil {
 		return nil, err
 	}
 	var contextValues command.Context
-	if err = eventstore.Decode(e.Input.Context, &contextValues); err != nil {
+	if err = canonicaljson.Decode(e.Input.Context, &contextValues); err != nil {
 		return nil, err
 	}
 	actor, err := principal(contextValues, e.Input.Root.Network)
@@ -59,37 +61,37 @@ func (r documentReducer) Apply(state json.RawMessage, e eventstore.Event) (json.
 	}
 	return b, nil
 }
-func principal(values command.Context, network string) (eventstore.Root, error) {
-	var p eventstore.Root
-	if eventstore.Decode(values["principal"], &p) != nil || p.Network != network || p.Service != "core" || p.Domain != "principal" || p.ID == "" {
+func principal(values command.Context, network string) (eventlib.Root, error) {
+	var p eventlib.Root
+	if canonicaljson.Decode(values["principal"], &p) != nil || p.Network != network || p.Service != "core" || p.Domain != "principal" || p.ID == "" {
 		return p, dia.ErrForbidden
 	}
 	return p, nil
 }
-func (a *App) root(id string) eventstore.Root {
-	return eventstore.Root{Network: a.network, Service: a.service, Domain: Domain, ID: id}
+func (a *App) root(id string) eventlib.Root {
+	return eventlib.Root{Network: a.network, Service: a.service, Domain: Domain, ID: id}
 }
-func (a *App) read(ctx context.Context, values command.Context, id string) (eventstore.Aggregate, error) {
+func (a *App) read(ctx context.Context, values command.Context, id string) (eventlib.Aggregate, error) {
 	owner, err := principal(values, a.network)
 	if err != nil {
-		return eventstore.Aggregate{}, err
+		return eventlib.Aggregate{}, err
 	}
 	if strings.TrimSpace(id) == "" {
-		return eventstore.Aggregate{}, dia.ErrInvalid
+		return eventlib.Aggregate{}, dia.ErrInvalid
 	}
 	aggregate, err := a.Store.Aggregate(ctx, a.root(id))
 	if err != nil {
 		return aggregate, err
 	}
 	if aggregate.Version < 0 {
-		return aggregate, eventstore.ErrNotFound
+		return aggregate, eventlib.ErrNotFound
 	}
 	var state Document
-	if err = eventstore.Decode(aggregate.State, &state); err != nil {
+	if err = canonicaljson.Decode(aggregate.State, &state); err != nil {
 		return aggregate, err
 	}
 	if state.Owner != owner {
-		return eventstore.Aggregate{}, eventstore.ErrNotFound
+		return eventlib.Aggregate{}, eventlib.ErrNotFound
 	}
 	return aggregate, nil
 }
@@ -110,7 +112,7 @@ func (a *App) command(queue command.Queue) command.Procedure {
 		}
 		if current.Version >= 0 {
 			var document Document
-			if err := eventstore.Decode(current.State, &document); err != nil {
+			if err := canonicaljson.Decode(current.State, &document); err != nil {
 				return command.Result{}, err
 			}
 			if document.Owner != owner {
@@ -118,20 +120,20 @@ func (a *App) command(queue command.Queue) command.Procedure {
 			}
 		}
 		var input SetDocument
-		if err = eventstore.Decode(in.Payload, &input); err != nil || len(input.Text) > 4096 {
+		if err = canonicaljson.Decode(in.Payload, &input); err != nil || len(input.Text) > 4096 {
 			return command.Result{}, command.ErrInvalid
 		}
-		body, err := eventstore.Encode(Document{Owner: owner, Text: input.Text})
+		body, err := canonicaljson.Encode(Document{Owner: owner, Text: input.Text})
 		if err != nil {
 			return command.Result{}, err
 		}
-		return command.Result{Events: []eventstore.Input{{Root: *in.Root, Action: "set", Payload: body, Expected: input.Expected}}, Then: func(_ context.Context, receipts []command.Receipt) (command.Contribution, error) {
+		return command.Result{Events: []eventlib.Input{{Root: *in.Root, Action: "set", Payload: body, Expected: input.Expected}}, Then: func(_ context.Context, receipts []command.Receipt) (command.Contribution, error) {
 			// Response construction is repeatable. External effects must separately
 			// inspect COMMITTED; this callback is never a durable action protocol.
 			if len(receipts) != 1 {
 				return command.Contribution{}, errors.New("document receipt count")
 			}
-			id, err := eventstore.Encode(in.Root.ID)
+			id, err := canonicaljson.Encode(in.Root.ID)
 			if err != nil {
 				return command.Contribution{}, err
 			}
@@ -145,21 +147,21 @@ func (a *App) fact() fact.Procedure {
 		if err != nil {
 			return nil, err
 		}
-		return eventstore.Encode(aggregate)
+		return canonicaljson.Encode(aggregate)
 	}, StreamFn: func(ctx context.Context, in fact.Request, yield fact.Yield) error {
 		owner, err := principal(in.Context, a.network)
 		if err != nil {
 			return err
 		}
-		return a.Store.StreamAggregates(ctx, a.network, a.service, Domain, in.Root, func(v eventstore.Aggregate) error {
+		return a.Store.StreamAggregates(ctx, a.network, a.service, Domain, in.Root, func(v eventlib.Aggregate) error {
 			var d Document
-			if err := eventstore.Decode(v.State, &d); err != nil {
+			if err := canonicaljson.Decode(v.State, &d); err != nil {
 				return err
 			}
 			if d.Owner != owner {
 				return nil
 			}
-			b, err := eventstore.Encode(v)
+			b, err := canonicaljson.Encode(v)
 			if err != nil {
 				return err
 			}
@@ -172,16 +174,16 @@ func (a *App) verifyJob() job.Procedure {
 		var p struct {
 			ID string `json:"id"`
 		}
-		if eventstore.Decode(in.Payload, &p) != nil {
+		if canonicaljson.Decode(in.Payload, &p) != nil {
 			return dia.ErrInvalid
 		}
 		var values command.Context
-		if eventstore.Decode(in.Context, &values) != nil {
+		if canonicaljson.Decode(in.Context, &values) != nil {
 			return dia.ErrForbidden
 		}
 		var claims dia.Claims
 		owner, ownerErr := principal(values, a.network)
-		if eventstore.Decode(in.Claims, &claims) != nil || ownerErr != nil || claims.Kind != "access" || claims.Subject != owner.ID || claims.Context.Principal != owner {
+		if canonicaljson.Decode(in.Claims, &claims) != nil || ownerErr != nil || claims.Kind != "access" || claims.Subject != owner.ID || claims.Context.Principal != owner {
 			return dia.ErrForbidden
 		}
 		_, err := a.read(ctx, values, p.ID)
@@ -190,21 +192,21 @@ func (a *App) verifyJob() job.Procedure {
 }
 
 // A stable procedure contract identity keeps request retries independent of builds.
-func (a *App) trace(name string) *eventstore.Trace {
-	return &eventstore.Trace{Network: a.network, Host: a.service, Procedure: name, Hash: "document-v1"}
+func (a *App) trace(name string) *eventlib.Trace {
+	return &eventlib.Trace{Network: a.network, Host: a.service, Procedure: name, Hash: "document-v1"}
 }
 
 // copyCommand invokes a fixed configured service from inside authenticated Main.
 // It promises no transaction across services: a child can commit before the
 // parent response is lost, and retry recovers that same child's stable event key.
-func (a *App) copyCommand(client transport.CommandClient) command.Procedure {
+func (a *App) copyCommand(client commandrpc.CommandClient) command.Procedure {
 	return command.Procedure{Trace: a.trace("copy"), RequiredContexts: []string{"principal"}, Main: func(ctx context.Context, in command.Request) (command.Result, error) {
 		var input struct {
 			Source        string `json:"source"`
 			SourceVersion *int64 `json:"sourceVersion"`
 			Destination   string `json:"destination"`
 		}
-		if eventstore.Decode(in.Payload, &input) != nil || strings.TrimSpace(input.Destination) == "" || input.SourceVersion == nil || *input.SourceVersion < 0 {
+		if canonicaljson.Decode(in.Payload, &input) != nil || strings.TrimSpace(input.Destination) == "" || input.SourceVersion == nil || *input.SourceVersion < 0 {
 			return command.Result{}, command.ErrInvalid
 		}
 		owner, err := principal(in.Context, a.network)
@@ -216,23 +218,23 @@ func (a *App) copyCommand(client transport.CommandClient) command.Procedure {
 			return command.Result{}, err
 		}
 		var document Document
-		if err := eventstore.Decode(aggregate.State, &document); err != nil {
+		if err := canonicaljson.Decode(aggregate.State, &document); err != nil {
 			return command.Result{}, err
 		}
 		if aggregate.LastIncludedNumber != *input.SourceVersion || document.Owner != owner {
-			return command.Result{}, eventstore.ErrNotFound
+			return command.Result{}, eventlib.ErrNotFound
 		}
-		payload, err := eventstore.Encode(SetDocument{Text: document.Text})
+		payload, err := canonicaljson.Encode(SetDocument{Text: document.Text})
 		if err != nil {
 			return command.Result{}, err
 		}
 		target := strings.Split(client.Target, "/")
-		root := eventstore.Root{Network: target[0], Service: target[1], Domain: Domain, ID: input.Destination}
+		root := eventlib.Root{Network: target[0], Service: target[1], Domain: Domain, ID: input.Destination}
 		child, err := client.Execute(ctx, in, "set", "copy", command.Request{Root: &root, Payload: payload})
 		if err != nil {
 			return command.Result{}, err
 		}
-		body, err := eventstore.Encode(child)
+		body, err := canonicaljson.Encode(child)
 		if err != nil {
 			return command.Result{}, err
 		}

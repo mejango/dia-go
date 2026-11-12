@@ -5,19 +5,21 @@ package integration
 import (
 	"context"
 	"fmt"
-	mongoStore "github.com/mejango/blossm-toolbox-go/storage/mongo"
-	"github.com/mejango/blossm-toolbox-go/storage/postgres"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"os"
 	"testing"
 	"time"
+
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	mongoStore "github.com/mejango/blossm-toolbox-go/vendors/mongodb"
+	"github.com/mejango/blossm-toolbox-go/vendors/postgres"
 )
 
 func newStore(t *testing.T, kind string) *eventstore.Store {
 	t.Helper()
 	ctx := context.Background()
 	ns := fmt.Sprintf("test_%d", time.Now().UnixNano())
-	var b eventstore.Backend
+	var b eventlib.Backend
 	var e error
 	if kind == "postgres" {
 		uri := os.Getenv("POSTGRES_URL")
@@ -40,5 +42,5 @@ func newStore(t *testing.T, kind string) *eventstore.Store {
 			t.Error(e)
 		}
 	})
-	return &eventstore.Store{Backend: b, Reducers: map[string]eventstore.Reducer{}}
+	return &eventstore.Store{Backend: b, Reducers: map[string]eventlib.Reducer{}}
 }

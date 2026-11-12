@@ -1,7 +1,5 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/ecdsa"
@@ -9,10 +7,12 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"strings"
 	"testing"
 	"time"
+
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 type captureMailer struct {
@@ -200,7 +200,7 @@ func TestAtomicReceiptRejectsIntentDrift(t *testing.T) {
 		t.Fatal("duplicate event")
 	}
 	changed := s.event(r, "add-networks", "same", 1, map[string]any{"networks": []string{"other.test"}})
-	if e := s.append(ctx, changed); !errors.Is(e, eventstore.ErrIdempotency) {
+	if e := s.append(ctx, changed); !errors.Is(e, eventlib.ErrIdempotency) {
 		t.Fatal(e)
 	}
 }
@@ -213,7 +213,7 @@ func TestChallengeAttemptLimitAndIntentBinding(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.SaveSession(ctx, start.Token, "save", "other@example.com", ""); !errors.Is(e, eventstore.ErrIdempotency) {
+	if _, e = s.SaveSession(ctx, start.Token, "save", "other@example.com", ""); !errors.Is(e, eventlib.ErrIdempotency) {
 		t.Fatal("changed intent accepted", e)
 	}
 	for i := 0; i < 5; i++ {
@@ -278,7 +278,7 @@ func TestSceneUpgradeLostResponseRecoveryIsBounded(t *testing.T) {
 	s, store, mail := coreService(t)
 	start, _ := startCore(t, s)
 	subject := s.root("example", "document", "d")
-	store.failAfter = eventstore.ErrUncertain
+	store.failAfter = eventlib.ErrUncertain
 	if _, e := s.RegisterScene(ctx, start.Token, "scene", subject); e != nil {
 		t.Fatal(e)
 	}
@@ -322,7 +322,7 @@ func TestConcurrentChallengeAnswerCommitsOnce(t *testing.T) {
 		e := <-errorsCh
 		if e == nil {
 			success++
-		} else if !errors.Is(e, eventstore.ErrConflict) {
+		} else if !errors.Is(e, eventlib.ErrConflict) {
 			t.Fatal(e)
 		}
 	}
@@ -365,7 +365,7 @@ func TestChallengeSameKeyCannotProbeMultipleCodes(t *testing.T) {
 	}
 	actual := strings.Fields(mail.messages[0].Body)[0]
 	for _, guess := range []string{"another", actual} {
-		if _, e = s.AnswerChallenge(ctx, challenge.Token, "guess", guess); !errors.Is(e, eventstore.ErrIdempotency) {
+		if _, e = s.AnswerChallenge(ctx, challenge.Token, "guess", guess); !errors.Is(e, eventlib.ErrIdempotency) {
 			t.Fatal("request key allowed another guess", e)
 		}
 	}
@@ -380,7 +380,7 @@ func TestChallengeSameKeyCannotProbeMultipleCodes(t *testing.T) {
 	if _, e = s.AuthenticateAccess(ctx, result.Token); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.AnswerChallenge(ctx, challenge.Token, "after-consumption", actual); !errors.Is(e, eventstore.ErrConflict) {
+	if _, e = s.AnswerChallenge(ctx, challenge.Token, "after-consumption", actual); !errors.Is(e, eventlib.ErrConflict) {
 		t.Fatal("consumed challenge accepted new request", e)
 	}
 	if _, e = s.AnswerChallenge(ctx, challenge.Token, "correct", actual); e != nil {
@@ -461,7 +461,7 @@ func TestConsumedChallengeRecoveryCannotBecomeGuessOracle(t *testing.T) {
 		t.Fatal(e)
 	}
 	for i := 0; i < MaxChallengeAttempts; i++ {
-		if _, e = s.AnswerChallenge(ctx, challenge.Token, "answer", fmt.Sprintf("wrong-%d", i)); !errors.Is(e, eventstore.ErrIdempotency) {
+		if _, e = s.AnswerChallenge(ctx, challenge.Token, "answer", fmt.Sprintf("wrong-%d", i)); !errors.Is(e, eventlib.ErrIdempotency) {
 			t.Fatal(e)
 		}
 	}
@@ -478,7 +478,7 @@ func TestChangeSceneLostResponseRecoversOnlyCommittedTarget(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	store.failAfter = eventstore.ErrUncertain
+	store.failAfter = eventlib.ErrUncertain
 	if _, e = s.ChangeScene(ctx, scene.Token, "switch", scene.Scene); e != nil {
 		t.Fatal(e)
 	}
@@ -493,7 +493,7 @@ func TestChangeSceneLostResponseRecoversOnlyCommittedTarget(t *testing.T) {
 	if store.snapshot(start.Session).Version != before {
 		t.Fatal("scene transition repeated")
 	}
-	if _, e = s.ChangeScene(ctx, scene.Token, "switch", s.root("core", "scene", "other")); !errors.Is(e, eventstore.ErrIdempotency) {
+	if _, e = s.ChangeScene(ctx, scene.Token, "switch", s.root("core", "scene", "other")); !errors.Is(e, eventlib.ErrIdempotency) {
 		t.Fatal("recovered unrelated target", e)
 	}
 }

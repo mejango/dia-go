@@ -9,7 +9,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/mejango/blossm-toolbox-go/cli"
+	"github.com/mejango/blossm-toolbox-go/cli/blossm"
 	"github.com/mejango/dia-go/deployment"
 )
 

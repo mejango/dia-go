@@ -1,8 +1,6 @@
 // Package wallet binds custody and transaction submission to authenticated Dia owners.
 package wallet
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/sha256"
@@ -14,8 +12,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/onchain/evm"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	coremodel "github.com/mejango/dia-go/models/core"
 	"github.com/mejango/dia-go/services/identity"
 )
 
@@ -38,15 +39,15 @@ func id(parts ...string) string {
 	h := sha256.Sum256(b)
 	return hex.EncodeToString(h[:])
 }
-func root(network, domain, key string) eventstore.Root {
-	return eventstore.Root{Network: network, Service: "wallet", Domain: domain, ID: key}
+func root(network, domain, key string) eventlib.Root {
+	return eventlib.Root{Network: network, Service: "wallet", Domain: domain, ID: key}
 }
 
 func validRequestKey(key string) bool { return strings.TrimSpace(key) != "" && len(key) <= 256 }
-func event(r eventstore.Root, action, key string, version int64, payload any) eventstore.Input {
+func event(r eventlib.Root, action, key string, version int64, payload any) eventlib.Input {
 	b, _ := json.Marshal(payload)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	return eventstore.Input{Root: r, Action: action, Key: key, Expected: &version, Created: now, Payload: b, Transaction: eventstore.Transaction{ID: key, Issued: now}}
+	return eventlib.Input{Root: r, Action: action, Key: key, Expected: &version, Created: now, Payload: b, Transaction: eventlib.Transaction{ID: key, Issued: now}}
 }
 func (s Service) owner(ctx context.Context, token string) (dia.Claims, error) {
 	if s.Auth == nil || s.Store == nil || s.Keys == nil {
@@ -106,9 +107,9 @@ func (s Service) Create(ctx context.Context, token, key string) (Address, error)
 		if e != nil {
 			return Address{}, e
 		}
-		_, e = s.Store.Append(ctx, []eventstore.Input{event(r, "create", "wallet/create/"+r.ID, 0, w)})
+		_, e = s.Store.Append(ctx, []eventlib.Input{event(r, "create", "wallet/create/"+r.ID, 0, w)})
 		if e != nil {
-			if !errors.Is(e, eventstore.ErrConflict) && !errors.Is(e, eventstore.ErrIdempotency) {
+			if !errors.Is(e, eventlib.ErrConflict) && !errors.Is(e, eventlib.ErrIdempotency) {
 				return Address{}, e
 			}
 			a, e = s.Store.Aggregate(ctx, r)
@@ -232,10 +233,10 @@ func (s Service) observe(ctx context.Context, network string, o evm.Observation,
 			return previous, nil
 		}
 	}
-	digest, e := eventstore.Digest(o)
+	digest, e := canonicaljson.Digest(o)
 	if e != nil {
 		return o, e
 	}
-	_, e = s.Store.Append(ctx, []eventstore.Input{event(r, "observe", fmt.Sprintf("wallet/observe/%s/%d/%s", o.ID, a.Version+1, digest), a.Version+1, o)})
+	_, e = s.Store.Append(ctx, []eventlib.Input{event(r, "observe", fmt.Sprintf("wallet/observe/%s/%d/%s", o.ID, a.Version+1, digest), a.Version+1, o)})
 	return o, e
 }

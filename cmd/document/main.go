@@ -1,12 +1,9 @@
 // Command document serves the Dia-backed document example over ordinary HTTP.
 package main
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"errors"
-	"github.com/mejango/dia-go/httpapi"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,12 +13,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mejango/blossm-toolbox-go/runtime/auth"
-	"github.com/mejango/blossm-toolbox-go/runtime/publication"
-	"github.com/mejango/blossm-toolbox-go/runtime/queue"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	cors "github.com/mejango/blossm-toolbox-go/middleware/cors"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/auth"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/publication"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/queue"
 	serviceapp "github.com/mejango/dia-go/examples/document"
+	"github.com/mejango/dia-go/httpapi"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -89,7 +90,7 @@ func run(ctx context.Context) error {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 	mux.Handle("/", app.Handler)
-	handler, err := transport.CORS(mux, cfg.Origins)
+	handler, err := cors.CORS(mux, cfg.Origins)
 	if err != nil {
 		return err
 	}
@@ -136,7 +137,7 @@ func run(ctx context.Context) error {
 	return serve(workerCtx, cancel, server, listener, failures)
 }
 
-func closeBackend(backend eventstore.Backend) {
+func closeBackend(backend eventlib.Backend) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = backend.Close(ctx)
@@ -144,12 +145,12 @@ func closeBackend(backend eventstore.Backend) {
 
 type publicationOwner struct {
 	store     *eventstore.Store
-	publisher eventstore.Publisher
+	publisher eventlib.Publisher
 }
 
 // Remote identity publication belongs to the Dia runtime. Only the standalone
 // inline demo owns both outboxes and projects identity notices directly.
-func publicationOwners(mode string, documents, identity *eventstore.Store, publisher eventstore.Publisher) []publicationOwner {
+func publicationOwners(mode string, documents, identity *eventstore.Store, publisher eventlib.Publisher) []publicationOwner {
 	switch mode {
 	case "gcp", "aws":
 		return []publicationOwner{{store: documents, publisher: publisher}}
@@ -161,11 +162,11 @@ func publicationOwners(mode string, documents, identity *eventstore.Store, publi
 }
 
 type publicationRouter struct {
-	documents        eventstore.Publisher
+	documents        eventlib.Publisher
 	network, service string
 }
 
-func (r publicationRouter) Publish(ctx context.Context, p eventstore.Publication) error {
+func (r publicationRouter) Publish(ctx context.Context, p eventlib.Publication) error {
 	root := p.Event.Input.Root
 	if root.Network != r.network {
 		return dia.ErrForbidden

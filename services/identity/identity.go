@@ -1,14 +1,15 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"strings"
 	"time"
+
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 type SceneResult struct {
@@ -51,7 +52,7 @@ func (s *Service) RegisterScene(ctx context.Context, token, key string, subject 
 			expected := c.Context
 			expected.Principal = principal
 			if prior.Subject != subject || prior.Group != group {
-				return SceneResult{}, eventstore.ErrIdempotency
+				return SceneResult{}, eventlib.ErrIdempotency
 			}
 			freshToken, err := s.recoverAccess(ctx, token, expected)
 			if err != nil {
@@ -67,7 +68,7 @@ func (s *Service) RegisterScene(ctx context.Context, token, key string, subject 
 			return SceneResult{Scene: scene, Group: group, Principal: principal, Token: freshToken}, nil
 		}
 		if !same(prior.Subject, subject) {
-			return SceneResult{}, eventstore.ErrIdempotency
+			return SceneResult{}, eventlib.ErrIdempotency
 		}
 		if e = s.require(ctx, c, scene, "core:scene:read"); e != nil {
 			return SceneResult{}, e
@@ -87,7 +88,7 @@ func (s *Service) RegisterScene(ctx context.Context, token, key string, subject 
 	if e != nil {
 		return SceneResult{}, e
 	}
-	ev := []eventstore.Input{s.event(scene, "register", key+"/scene", 0, coremodel.SceneState{Subject: subject, Group: group}), s.event(group, "add-principals", key+"/group", 0, map[string]any{"principals": []coremodel.Ref{principal}}), s.event(group, "add-networks", key+"/networks", 1, map[string]any{"networks": []string{s.Network}}), s.event(principal, "add-roles", key+"/roles", pa.Version, map[string]any{"roles": []coremodel.RoleGrant{{ID: "SceneAdmin", Subject: scene}, {ID: "GroupAdmin", Subject: group}}})}
+	ev := []eventlib.Input{s.event(scene, "register", key+"/scene", 0, coremodel.SceneState{Subject: subject, Group: group}), s.event(group, "add-principals", key+"/group", 0, map[string]any{"principals": []coremodel.Ref{principal}}), s.event(group, "add-networks", key+"/networks", 1, map[string]any{"networks": []string{s.Network}}), s.event(principal, "add-roles", key+"/roles", pa.Version, map[string]any{"roles": []coremodel.RoleGrant{{ID: "SceneAdmin", Subject: scene}, {ID: "GroupAdmin", Subject: group}}})}
 	if c.Context.Principal.ID == "" {
 		ev = append(ev, s.event(c.Context.Session, "upgrade", key+"/upgrade", sa.Version, map[string]coremodel.Ref{"principal": principal}))
 	}
@@ -169,7 +170,7 @@ func (s *Service) addPrincipals(ctx context.Context, token, key string, group co
 		return coremodel.Ref{}, e
 	}
 	if a.Version == 0 && !fresh {
-		return coremodel.Ref{}, eventstore.ErrNotFound
+		return coremodel.Ref{}, eventlib.ErrNotFound
 	}
 	if fresh && a.Version > 0 {
 		if e = s.require(ctx, c, group, "core:group:update"); e != nil {
@@ -198,7 +199,7 @@ func (s *Service) addPrincipals(ctx context.Context, token, key string, group co
 	if fresh {
 		principals = append(principals, c.Context.Principal)
 	}
-	ev := []eventstore.Input{s.event(group, "add-principals", key+"/members", a.Version, map[string]any{"principals": principals})}
+	ev := []eventlib.Input{s.event(group, "add-principals", key+"/members", a.Version, map[string]any{"principals": principals})}
 	if fresh {
 		ev = append(ev, s.event(group, "add-networks", key+"/network", a.Version+1, map[string]any{"networks": []string{s.Network}}))
 	}
@@ -250,7 +251,7 @@ func (s *Service) RemovePrincipals(ctx context.Context, token, key string, group
 	if e != nil {
 		return e
 	}
-	ev := []eventstore.Input{s.event(group, "remove-principals", key+"/members", a.Version, map[string]any{"principals": principals})}
+	ev := []eventlib.Input{s.event(group, "remove-principals", key+"/members", a.Version, map[string]any{"principals": principals})}
 	seen := map[coremodel.Ref]bool{}
 	for _, r := range principals {
 		if seen[r] {
@@ -352,7 +353,7 @@ func (s *Service) RolePermissions(ctx context.Context, token, id string) ([]stri
 		return nil, e
 	}
 	if a.Version == 0 {
-		return nil, eventstore.ErrNotFound
+		return nil, eventlib.ErrNotFound
 	}
 	return role.Permissions, nil
 }
@@ -380,7 +381,7 @@ func (s *Service) changeRoles(ctx context.Context, token, key string, principal 
 	// Pin each dynamic definition used for authorization to this atomic grant.
 	// Permission edits and grants must conflict on the same role version.
 	dynamic := make(map[string][]string)
-	var touches []eventstore.Input
+	var touches []eventlib.Input
 	builtins := BuiltinRoles()
 	for _, g := range roles {
 		perms, builtin := builtins[g.ID]
@@ -395,7 +396,7 @@ func (s *Service) changeRoles(ctx context.Context, token, key string, principal 
 					return err
 				}
 				if snapshot.Version == 0 {
-					return eventstore.ErrNotFound
+					return eventlib.ErrNotFound
 				}
 				perms = role.Permissions
 				dynamic[g.ID] = perms
@@ -416,7 +417,7 @@ func (s *Service) changeRoles(ctx context.Context, token, key string, principal 
 	if e != nil {
 		return e
 	}
-	events := []eventstore.Input{s.event(principal, action, key, a.Version, map[string]any{"roles": roles})}
+	events := []eventlib.Input{s.event(principal, action, key, a.Version, map[string]any{"roles": roles})}
 	return s.appendAtomicRequest(ctx, append(events, touches...), request, receipt)
 }
 
@@ -475,7 +476,7 @@ func (s *Service) ChangeRolePermissions(ctx context.Context, token, key, id stri
 		}
 	}
 	if !remove {
-		principals, e := s.Store.Query(ctx, s.Network, "core", "principal", []eventstore.Predicate{{Path: "roles.id", Value: mustJSON(id)}})
+		principals, e := s.Store.Query(ctx, s.Network, "core", "principal", []eventlib.Predicate{{Path: "roles.id", Value: mustJSON(id)}})
 		if e != nil {
 			return e
 		}
@@ -543,7 +544,7 @@ func (s *Service) RemoveRoles(ctx context.Context, token, key string, principal 
 		Roles     []coremodel.RoleGrant `json:"roles"`
 		Subjects  []coremodel.Ref       `json:"subjects"`
 	}{c.Context.Session, c.Context.Principal, principal, roles, subjects})
-	request, e = eventstore.Canonical(request)
+	request, e = canonicaljson.Canonical(request)
 	if e != nil {
 		return e
 	}
@@ -556,7 +557,7 @@ func (s *Service) RemoveRoles(ctx context.Context, token, key string, principal 
 			return false, err
 		}
 		if string(op.Request) != string(request) || op.Digest != requestDigest(request) {
-			return false, eventstore.ErrIdempotency
+			return false, eventlib.ErrIdempotency
 		}
 		// No replay: Inputs are the exact original prepared targets, committed in
 		// the same transaction as this receipt. Later regrants remain untouched.
@@ -606,6 +607,6 @@ func mustJSON(value any) json.RawMessage {
 	}
 	return encoded
 }
-func (s *Service) groupsForPrincipal(ctx context.Context, principal coremodel.Ref) ([]eventstore.Aggregate, error) {
-	return s.Store.Query(ctx, s.Network, "core", "group", []eventstore.Predicate{{Path: "principals.id", Value: mustJSON(principal.ID)}, {Path: "principals.service", Value: mustJSON(principal.Service)}, {Path: "principals.domain", Value: mustJSON(principal.Domain)}, {Path: "principals.network", Value: mustJSON(principal.Network)}})
+func (s *Service) groupsForPrincipal(ctx context.Context, principal coremodel.Ref) ([]eventlib.Aggregate, error) {
+	return s.Store.Query(ctx, s.Network, "core", "group", []eventlib.Predicate{{Path: "principals.id", Value: mustJSON(principal.ID)}, {Path: "principals.service", Value: mustJSON(principal.Service)}, {Path: "principals.domain", Value: mustJSON(principal.Domain)}, {Path: "principals.network", Value: mustJSON(principal.Network)}})
 }

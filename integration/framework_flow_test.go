@@ -2,8 +2,6 @@
 
 package integration
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"bytes"
 	"context"
@@ -12,7 +10,6 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
-	"github.com/mejango/dia-go/httpapi"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -23,15 +20,21 @@ import (
 
 	tasks "cloud.google.com/go/cloudtasks/apiv2/cloudtaskspb"
 	"github.com/googleapis/gax-go/v2"
-	"github.com/mejango/blossm-toolbox-go/cloud/gcp"
-	"github.com/mejango/blossm-toolbox-go/delivery"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/procedures/command"
+	commandrpc "github.com/mejango/blossm-toolbox-go/procedures/command/rpc"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	eventstorerpc "github.com/mejango/blossm-toolbox-go/procedures/event_stores/rpc"
 	"github.com/mejango/blossm-toolbox-go/procedures/fact"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
 	"github.com/mejango/blossm-toolbox-go/procedures/projection"
-	"github.com/mejango/blossm-toolbox-go/rpc"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/delivery"
+	"github.com/mejango/blossm-toolbox-go/rpc/generic"
+	"github.com/mejango/blossm-toolbox-go/vendors/gcp"
 	serviceapp "github.com/mejango/dia-go/examples/document"
+	"github.com/mejango/dia-go/httpapi"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -100,7 +103,7 @@ func frameworkIdentity(t *testing.T, kind string) (*dia.Service, dia.SessionResu
 }
 func documentPrincipal(t *testing.T, identity *dia.Service, session dia.SessionResult, key string) dia.SessionResult {
 	t.Helper()
-	scene, err := identity.RegisterScene(context.Background(), session.Token, key, eventstore.Root{Network: "local", Service: "system", Domain: "node", ID: "documents"})
+	scene, err := identity.RegisterScene(context.Background(), session.Token, key, eventlib.Root{Network: "local", Service: "system", Domain: "node", ID: "documents"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +131,7 @@ func bearer(token string) http.Header {
 func decodeCommand(t *testing.T, r rpc.Response) command.Response {
 	t.Helper()
 	var out command.Response
-	if err := eventstore.Decode(r.Body, &out); err != nil {
+	if err := canonicaljson.Decode(r.Body, &out); err != nil {
 		t.Fatal(err)
 	}
 	return out
@@ -145,14 +148,14 @@ func TestGenericFrameworkNativeFlow(t *testing.T) {
 				t.Fatal(err)
 			}
 			client, server := frameworkRPC(t, app.Handler)
-			root := eventstore.Root{Network: "local", Service: "example", Domain: serviceapp.Domain, ID: "one"}
+			root := eventlib.Root{Network: "local", Service: "example", Domain: serviceapp.Domain, ID: "one"}
 			in := command.Request{ID: "set-one", Issued: "2026-11-12T00:00:00Z", Root: &root, Payload: json.RawMessage(`{"text":"hello"}`), Context: command.Context{"principal": json.RawMessage(`{"id":"forged"}`)}}
 			first, err := client.Do(ctx, "POST", "/commands/set", nil, in, bearer(session.Token))
 			if err != nil {
 				t.Fatal(err)
 			}
 			out := decodeCommand(t, first)
-			if len(out.Receipts) != 1 || out.Receipts[0].Outcome != eventstore.Committed || pushes != 1 {
+			if len(out.Receipts) != 1 || out.Receipts[0].Outcome != eventlib.Committed || pushes != 1 {
 				t.Fatal("missing full command->projection flow", out, pushes)
 			}
 			original := out.Receipts[0].Event
@@ -171,7 +174,7 @@ func TestGenericFrameworkNativeFlow(t *testing.T) {
 				t.Fatal("refresh retry", err)
 			}
 			retry := decodeCommand(t, second)
-			if retry.Receipts[0].Outcome != eventstore.Duplicate || !bytes.Equal(retry.Body["id"], out.Body["id"]) || retry.Receipts[0].Event.Hash != original.Hash || pushes != 1 {
+			if retry.Receipts[0].Outcome != eventlib.Duplicate || !bytes.Equal(retry.Body["id"], out.Body["id"]) || retry.Receipts[0].Event.Hash != original.Hash || pushes != 1 {
 				t.Fatal("retry changed commitment/response/push")
 			}
 			if err = eventstore.Verify(*retry.Receipts[0].Event); err != nil {
@@ -181,18 +184,18 @@ func TestGenericFrameworkNativeFlow(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var row eventstore.Projection
-			if err = eventstore.Decode(v.Body, &row); err != nil {
+			var row eventlib.Projection
+			if err = canonicaljson.Decode(v.Body, &row); err != nil {
 				t.Fatal(err)
 			}
 			if row.ID != "one" || row.Version != 0 {
 				t.Fatal(row)
 			}
-			aggregate, err := (transport.StoreClient{RPC: client}).Aggregate(ctx, root, bearer(peer))
+			aggregate, err := (eventstorerpc.StoreClient{RPC: client}).Aggregate(ctx, root, bearer(peer))
 			if err != nil || aggregate.Version != 0 {
 				t.Fatal("remote replay", aggregate, err)
 			}
-			if _, err = (transport.StoreClient{RPC: client}).Aggregate(ctx, root, bearer(session.Token)); err == nil {
+			if _, err = (eventstorerpc.StoreClient{RPC: client}).Aggregate(ctx, root, bearer(session.Token)); err == nil {
 				t.Fatal("user token accepted as internal credential")
 			}
 			var count int
@@ -237,14 +240,14 @@ func TestGenericFrameworkNativeFlow(t *testing.T) {
 				t.Fatal(err)
 			}
 			parentApp, err := serviceapp.New(ctx, serviceapp.Config{Store: &eventstore.Store{Backend: app.Store.Backend}, Identity: identity, Service: "example", Internal: internal, InlinePublication: true,
-				Outbound: &transport.CommandClient{RPC: remote, Target: "local/second", Authorize: mint}})
+				Outbound: &commandrpc.CommandClient{RPC: remote, Target: "local/second", Authorize: mint}})
 			if err != nil {
 				t.Fatal(err)
 			}
 			parentRPC, _ := frameworkRPC(t, parentApp.Handler)
 			parent := command.Request{ID: "copy-one", Issued: in.Issued, Payload: json.RawMessage(`{"source":"one","sourceVersion":0,"destination":"copied"}`)}
 			var childID string
-			for i, outcome := range []eventstore.Outcome{eventstore.Committed, eventstore.Duplicate} {
+			for i, outcome := range []eventlib.Outcome{eventlib.Committed, eventlib.Duplicate} {
 				if i == 1 {
 					changed := in
 					changed.ID = "update-source"
@@ -259,7 +262,7 @@ func TestGenericFrameworkNativeFlow(t *testing.T) {
 				}
 				result := decodeCommand(t, response)
 				var child command.Response
-				if err := eventstore.Decode(result.Body["child"], &child); err != nil {
+				if err := canonicaljson.Decode(result.Body["child"], &child); err != nil {
 					t.Fatal(err)
 				}
 				if len(child.Receipts) != 1 || child.Receipts[0].Outcome != outcome {
@@ -272,21 +275,21 @@ func TestGenericFrameworkNativeFlow(t *testing.T) {
 				}
 				event := child.Receipts[0].Event
 				var copied serviceapp.Document
-				if eventstore.Decode(event.Input.Payload, &copied) != nil || copied.Text != "hello" {
+				if canonicaljson.Decode(event.Input.Payload, &copied) != nil || copied.Text != "hello" {
 					t.Fatal("copy retry reread mutable source", copied)
 				}
 				if event.Input.Transaction.ID != parent.ID || event.Input.Transaction.Issued != in.Issued || len(event.Input.Transaction.Path) != 2 || event.Input.Transaction.Path[0].Procedure != "copy" || event.Input.Transaction.Path[1].Procedure != "set" {
 					t.Fatal("child lineage", event.Input.Transaction)
 				}
 				var childClaims dia.Claims
-				if eventstore.Decode(event.Input.Transaction.Claims, &childClaims) != nil || childClaims.Kind != "service" || childClaims.Subject != "local/example" || childClaims.Context.Principal != session.Context.Principal {
+				if canonicaljson.Decode(event.Input.Transaction.Claims, &childClaims) != nil || childClaims.Kind != "service" || childClaims.Subject != "local/example" || childClaims.Context.Principal != session.Context.Principal {
 					t.Fatal("child authority", childClaims)
 				}
 			}
 			authenticatedParent := parent
-			authenticatedParent.Claims, _ = eventstore.Encode(claims)
-			contextBytes, _ := eventstore.Encode(claims.Context)
-			if err := eventstore.Decode(contextBytes, &authenticatedParent.Context); err != nil {
+			authenticatedParent.Claims, _ = canonicaljson.Encode(claims)
+			contextBytes, _ := canonicaljson.Encode(claims.Context)
+			if err := canonicaljson.Decode(contextBytes, &authenticatedParent.Context); err != nil {
 				t.Fatal(err)
 			}
 			delegatedHeaders, err := mint(ctx, authenticatedParent)
@@ -309,7 +312,7 @@ func TestGenericFrameworkNativeFlow(t *testing.T) {
 				}
 			}
 			// Restart composition over the same database; original event bytes still replay.
-			restarted, err := serviceapp.New(ctx, serviceapp.Config{Store: &eventstore.Store{Backend: app.Store.Backend, Reducers: map[string]eventstore.Reducer{}}, Identity: identity, Service: "example", Internal: internal, InlinePublication: true})
+			restarted, err := serviceapp.New(ctx, serviceapp.Config{Store: &eventstore.Store{Backend: app.Store.Backend, Reducers: map[string]eventlib.Reducer{}}, Identity: identity, Service: "example", Internal: internal, InlinePublication: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -366,14 +369,14 @@ func TestGenericAsyncDeliveryAndReplayNative(t *testing.T) {
 				t.Fatal(err)
 			}
 			client, server := frameworkRPC(t, app.Handler)
-			root := eventstore.Root{Network: "local", Service: "async", Domain: serviceapp.Domain, ID: "queued"}
+			root := eventlib.Root{Network: "local", Service: "async", Domain: serviceapp.Domain, ID: "queued"}
 			input := command.Request{ID: "async-1", Issued: "2026-11-12T00:00:00Z", Root: &root, Payload: json.RawMessage(`{"text":"queued"}`), Async: true}
 			response, err := client.Do(ctx, "POST", "/commands/set", nil, input, bearer(session.Token))
 			if err != nil {
 				t.Fatal(err)
 			}
 			out := decodeCommand(t, response)
-			if out.Receipts[0].Outcome != eventstore.Queued {
+			if out.Receipts[0].Outcome != eventlib.Queued {
 				t.Fatal("not queued")
 			}
 			count, err := app.Store.Count(ctx, root)
@@ -492,7 +495,7 @@ func TestGenericAsyncDeliveryAndReplayNative(t *testing.T) {
 				t.Fatal("submitted ID not inspectable", err)
 			}
 			var terminal delivery.Rejection
-			if eventstore.Decode(terminalResponse.Body, &terminal) != nil || terminal.Reason != delivery.RejectionIdempotency || terminal.EnvelopeID != poisonAccepted.Acceptance.EnvelopeID {
+			if canonicaljson.Decode(terminalResponse.Body, &terminal) != nil || terminal.Reason != delivery.RejectionIdempotency || terminal.EnvelopeID != poisonAccepted.Acceptance.EnvelopeID {
 				t.Fatal("poison not recorded before acknowledgment", terminal)
 			}
 			next := input

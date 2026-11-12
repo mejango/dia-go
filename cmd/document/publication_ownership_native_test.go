@@ -11,24 +11,26 @@ import (
 	"testing"
 	"time"
 
-	mongoStore "github.com/mejango/blossm-toolbox-go/storage/mongo"
-	"github.com/mejango/blossm-toolbox-go/storage/postgres"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	mongoStore "github.com/mejango/blossm-toolbox-go/vendors/mongodb"
+	"github.com/mejango/blossm-toolbox-go/vendors/postgres"
 )
 
 // This fixture tests publication ownership, not application reducer policy.
 type publicationOwnershipReducer struct{}
 
 func (publicationOwnershipReducer) Normalize(_ string, payload json.RawMessage) (json.RawMessage, error) {
-	return eventstore.Canonical(payload)
+	return canonicaljson.Canonical(payload)
 }
-func (publicationOwnershipReducer) Apply(_ json.RawMessage, event eventstore.Event) (json.RawMessage, error) {
+func (publicationOwnershipReducer) Apply(_ json.RawMessage, event eventlib.Event) (json.RawMessage, error) {
 	return event.Input.Payload, nil
 }
 
-type publicationCapture []eventstore.Publication
+type publicationCapture []eventlib.Publication
 
-func (p *publicationCapture) Publish(_ context.Context, notice eventstore.Publication) error {
+func (p *publicationCapture) Publish(_ context.Context, notice eventlib.Publication) error {
 	*p = append(*p, notice)
 	return nil
 }
@@ -42,7 +44,7 @@ func TestPublicationOwnershipNative(t *testing.T) {
 				namespace := fmt.Sprintf("ownership_%d", time.Now().UnixNano())
 				open := func(suffix string) *eventstore.Store {
 					t.Helper()
-					var backend eventstore.Backend
+					var backend eventlib.Backend
 					var err error
 					if driver == "postgres" {
 						uri := os.Getenv("POSTGRES_URL")
@@ -67,29 +69,29 @@ func TestPublicationOwnershipNative(t *testing.T) {
 							t.Error(err)
 						}
 					})
-					return &eventstore.Store{Backend: backend, Reducers: map[string]eventstore.Reducer{
+					return &eventstore.Store{Backend: backend, Reducers: map[string]eventlib.Reducer{
 						"wallet/wallet": publicationOwnershipReducer{}, "notes/document": publicationOwnershipReducer{},
 					}}
 				}
 				identity, documents := open("_identity"), open("_documents")
 				appendEvent := func(store *eventstore.Store, service, domain string) {
 					t.Helper()
-					receipt, err := store.Append(ctx, []eventstore.Input{{
-						Root:   eventstore.Root{Network: "local", Service: service, Domain: domain, ID: "one"},
+					receipt, err := store.Append(ctx, []eventlib.Input{{
+						Root:   eventlib.Root{Network: "local", Service: service, Domain: domain, ID: "one"},
 						Action: "set", Key: "fixture", Created: "2026-11-12T00:00:00Z", Payload: json.RawMessage(`{"value":"retained"}`),
-						Transaction: eventstore.Transaction{ID: "fixture", Issued: "2026-11-12T00:00:00Z"},
+						Transaction: eventlib.Transaction{ID: "fixture", Issued: "2026-11-12T00:00:00Z"},
 					}})
 					if err != nil {
 						t.Fatal(err)
 					}
-					if len(receipt) != 1 || receipt[0].Outcome != eventstore.Committed {
+					if len(receipt) != 1 || receipt[0].Outcome != eventlib.Committed {
 						t.Fatal("event not committed", receipt)
 					}
 				}
-				pending := func(store *eventstore.Store) []eventstore.Publication {
+				pending := func(store *eventstore.Store) []eventlib.Publication {
 					t.Helper()
-					var notices []eventstore.Publication
-					err := store.Backend.View(ctx, func(reader eventstore.Reader) error {
+					var notices []eventlib.Publication
+					err := store.Backend.View(ctx, func(reader eventlib.Reader) error {
 						var err error
 						notices, err = reader.Pending(ctx, 10)
 						return err
@@ -111,7 +113,7 @@ func TestPublicationOwnershipNative(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				if !reflect.DeepEqual([]eventstore.Publication(remote), documentsBefore) {
+				if !reflect.DeepEqual([]eventlib.Publication(remote), documentsBefore) {
 					t.Fatal("remote publisher must receive only the exact document notice", remote)
 				}
 				if len(pending(documents)) != 0 {
@@ -124,7 +126,7 @@ func TestPublicationOwnershipNative(t *testing.T) {
 				if err := identity.Deliver(ctx, &identityPublisher, 10); err != nil {
 					t.Fatal(err)
 				}
-				if !reflect.DeepEqual([]eventstore.Publication(identityPublisher), identityBefore) {
+				if !reflect.DeepEqual([]eventlib.Publication(identityPublisher), identityBefore) {
 					t.Fatal("identity owner did not recover the original wallet notice")
 				}
 				if len(pending(identity)) != 0 {

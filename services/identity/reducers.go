@@ -1,9 +1,5 @@
 package dia
 
-import commsmodel "github.com/mejango/dia-go/models/comms"
-import systemmodel "github.com/mejango/dia-go/models/system"
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"bytes"
 	"encoding/json"
@@ -11,7 +7,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	commsmodel "github.com/mejango/dia-go/models/comms"
+	coremodel "github.com/mejango/dia-go/models/core"
+	systemmodel "github.com/mejango/dia-go/models/system"
 )
 
 // decode is the shared typed boundary for commands and persisted domain data.
@@ -35,7 +34,7 @@ func (r domainReducer[S]) Normalize(action string, raw json.RawMessage) (json.Ra
 	}
 	return a.normalize(raw)
 }
-func (r domainReducer[S]) Apply(raw json.RawMessage, event eventstore.Event) (json.RawMessage, error) {
+func (r domainReducer[S]) Apply(raw json.RawMessage, event eventlib.Event) (json.RawMessage, error) {
 	payload, err := r.Normalize(event.Input.Action, event.Input.Payload)
 	if err != nil {
 		return nil, err
@@ -201,8 +200,8 @@ type smsPayload struct {
 // commsReducer keeps provider payload events separate from encrypted preparations.
 // A prepared delivery can only be created once; retries read the stored payload.
 type commsReducer struct {
-	legacy  eventstore.Reducer
-	prepare eventstore.Reducer
+	legacy  eventlib.Reducer
+	prepare eventlib.Reducer
 }
 
 func (r commsReducer) Normalize(action string, raw json.RawMessage) (json.RawMessage, error) {
@@ -211,7 +210,7 @@ func (r commsReducer) Normalize(action string, raw json.RawMessage) (json.RawMes
 	}
 	return r.legacy.Normalize(action, raw)
 }
-func (r commsReducer) Apply(state json.RawMessage, event eventstore.Event) (json.RawMessage, error) {
+func (r commsReducer) Apply(state json.RawMessage, event eventlib.Event) (json.RawMessage, error) {
 	if event.Input.Action == "prepare" {
 		if event.Number != 0 {
 			return nil, errors.New("delivery preparation must be the first event")
@@ -220,7 +219,7 @@ func (r commsReducer) Apply(state json.RawMessage, event eventstore.Event) (json
 	}
 	return r.legacy.Apply(state, event)
 }
-func encryptedComms(legacy eventstore.Reducer) eventstore.Reducer {
+func encryptedComms(legacy eventlib.Reducer) eventlib.Reducer {
 	return commsReducer{legacy: legacy, prepare: domainReducer[commsmodel.CommsState]{
 		"prepare": action(func(p commsmodel.CommsState) error {
 			return require(nonempty(p.Delivery) && nonempty(p.RequestHash) && validRef(p.Subject), "invalid delivery preparation")
@@ -235,7 +234,7 @@ func encryptedComms(legacy eventstore.Reducer) eventstore.Reducer {
 }
 
 // Reducers returns independent domain registries. Authentication and delivery belong to services.
-func Reducers() map[string]eventstore.Reducer {
+func Reducers() map[string]eventlib.Reducer {
 	session := domainReducer[coremodel.SessionState]{
 		"start": action(func(p coremodel.SessionState) error {
 			return require(validDevice(p.Device) && p.Started > 0 && p.Expires > p.Started && p.Principal == (coremodel.Ref{}) && p.Account == (coremodel.Ref{}) && p.Scene == (coremodel.Ref{}) && p.Terminated == "", "invalid session start")
@@ -401,7 +400,7 @@ func Reducers() map[string]eventstore.Reducer {
 			return nil
 		}),
 	}
-	return map[string]eventstore.Reducer{
+	return map[string]eventlib.Reducer{
 		"core/operation": operationReducer{},
 		"core/session":   session, "core/account": account, "core/challenge": challenge,
 		"core/principal": principal, "core/group": group, "core/role": role, "core/scene": scene,

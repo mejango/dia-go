@@ -1,14 +1,13 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"errors"
 	"strings"
 	"testing"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 // These one-shot gates run a competing operation at an exact read/commit
@@ -19,7 +18,7 @@ type identityRaceStore struct {
 	beforeAppend func()
 }
 
-func (s *identityRaceStore) Query(ctx context.Context, network, service, domain string, predicates []eventstore.Predicate) ([]eventstore.Aggregate, error) {
+func (s *identityRaceStore) Query(ctx context.Context, network, service, domain string, predicates []eventlib.Predicate) ([]eventlib.Aggregate, error) {
 	rows, err := s.systemTestStore.Query(ctx, network, service, domain, predicates)
 	if err == nil && s.afterQuery != nil {
 		gate := s.afterQuery
@@ -29,7 +28,7 @@ func (s *identityRaceStore) Query(ctx context.Context, network, service, domain 
 	return rows, err
 }
 
-func (s *identityRaceStore) Append(ctx context.Context, inputs []eventstore.Input) ([]eventstore.Receipt, error) {
+func (s *identityRaceStore) Append(ctx context.Context, inputs []eventlib.Input) ([]eventlib.Receipt, error) {
 	if s.beforeAppend != nil {
 		gate := s.beforeAppend
 		s.beforeAppend = nil
@@ -75,7 +74,7 @@ func TestDynamicRoleGrantExpansionInterleavings(t *testing.T) {
 			if winnerErr != nil {
 				t.Fatalf("winner: %v", winnerErr)
 			}
-			if !errors.Is(loserErr, eventstore.ErrConflict) {
+			if !errors.Is(loserErr, eventlib.ErrConflict) {
 				t.Fatalf("loser must conflict: %v", loserErr)
 			}
 			if len(store.batches) != 1 {

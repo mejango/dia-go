@@ -4,12 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
-type unusedBackend struct{ eventstore.Backend }
+type unusedBackend struct{ eventlib.Backend }
 
 func TestRejectSharedOutboxBackend(t *testing.T) {
 	backend := &unusedBackend{}
