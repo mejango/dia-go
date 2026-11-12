@@ -1,6 +1,8 @@
 package system
 
-import coremodel "github.com/mejango/dia-go/models/core"
+import (
+	coremodel "github.com/mejango/dia-go/models/core"
+)
 
 type NodeState struct {
 	Network string        `json:"network"`

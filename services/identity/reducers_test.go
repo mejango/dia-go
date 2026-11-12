@@ -1,9 +1,5 @@
 package dia
 
-import commsmodel "github.com/mejango/dia-go/models/comms"
-import systemmodel "github.com/mejango/dia-go/models/system"
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"bytes"
 	"encoding/json"
@@ -11,7 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	commsmodel "github.com/mejango/dia-go/models/comms"
+	coremodel "github.com/mejango/dia-go/models/core"
+	systemmodel "github.com/mejango/dia-go/models/system"
 )
 
 func reducerJSON(t *testing.T, v any) json.RawMessage {
@@ -25,9 +24,9 @@ func reducerJSON(t *testing.T, v any) json.RawMessage {
 func reducerRef(id string) coremodel.Ref {
 	return coremodel.Ref{Network: "test", Service: "core", Domain: "principal", ID: id}
 }
-func reduceTest(t *testing.T, r eventstore.Reducer, state json.RawMessage, action string, payload any) json.RawMessage {
+func reduceTest(t *testing.T, r eventlib.Reducer, state json.RawMessage, action string, payload any) json.RawMessage {
 	t.Helper()
-	out, e := r.Apply(state, eventstore.Event{Input: eventstore.Input{Action: action, Payload: reducerJSON(t, payload)}, Number: 0})
+	out, e := r.Apply(state, eventlib.Event{Input: eventlib.Input{Action: action, Payload: reducerJSON(t, payload)}, Number: 0})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -83,7 +82,7 @@ func TestReducerActions(t *testing.T) {
 			if e != nil || !bytes.Equal(normalized, again) {
 				t.Fatalf("unstable normalization: %s %v", again, e)
 			}
-			event := eventstore.Event{Input: eventstore.Input{Action: tc.action, Payload: normalized}, Number: 0}
+			event := eventlib.Event{Input: eventlib.Input{Action: tc.action, Payload: normalized}, Number: 0}
 			first, e := r.Apply(nil, event)
 			if e != nil {
 				t.Fatal(e)
@@ -205,8 +204,8 @@ func TestReducerLifecycleAndSparseUpgrade(t *testing.T) {
 	if ss.Principal != ref || ss.Scene != ref || ss.Device != start.Device || ss.Started != 10 || ss.Expires != 20 {
 		t.Fatalf("upgrade erased state: %s", session)
 	}
-	event := func(action string, p any) eventstore.Event {
-		return eventstore.Event{Input: eventstore.Input{Action: action, Payload: reducerJSON(t, p)}}
+	event := func(action string, p any) eventlib.Event {
+		return eventlib.Event{Input: eventlib.Input{Action: action, Payload: reducerJSON(t, p)}}
 	}
 	if _, e := r["core/session"].Apply(session, event("upgrade", map[string]coremodel.Ref{"principal": reducerRef("other")})); e != nil {
 		t.Fatalf("provisional principal replacement: %v", e)
@@ -216,12 +215,12 @@ func TestReducerLifecycleAndSparseUpgrade(t *testing.T) {
 		t.Fatal("switched principal")
 	}
 	session = reduceTest(t, r["core/session"], session, "terminate", map[string]string{"terminated": "now"})
-	for _, ev := range []eventstore.Event{event("start", start), event("upgrade", map[string]coremodel.Ref{"principal": ref}), event("change-scene", map[string]coremodel.Ref{"scene": ref})} {
+	for _, ev := range []eventlib.Event{event("start", start), event("upgrade", map[string]coremodel.Ref{"principal": ref}), event("change-scene", map[string]coremodel.Ref{"scene": ref})} {
 		if _, e := r["core/session"].Apply(session, ev); e == nil {
 			t.Fatalf("terminated session accepted %s", ev.Input.Action)
 		}
 	}
-	challenge := coremodel.ChallengeState{Code: "hash", Expires: 1, Session: ref, Delivery: "ciphertext", Upgrade: coremodel.SessionContext{Principal: ref}, Events: []eventstore.Input{{Root: ref, Action: "set-subject", Payload: reducerJSON(t, map[string]coremodel.Ref{"subject": ref})}}}
+	challenge := coremodel.ChallengeState{Code: "hash", Expires: 1, Session: ref, Delivery: "ciphertext", Upgrade: coremodel.SessionContext{Principal: ref}, Events: []eventlib.Input{{Root: ref, Action: "set-subject", Payload: reducerJSON(t, map[string]coremodel.Ref{"subject": ref})}}}
 	state := reduceTest(t, r["core/challenge"], nil, "issue", challenge)
 	state = reduceTest(t, r["core/challenge"], state, "answer", map[string]string{"answered": "now"})
 	var cs coremodel.ChallengeState
@@ -231,7 +230,7 @@ func TestReducerLifecycleAndSparseUpgrade(t *testing.T) {
 	if cs.Delivery != "ciphertext" || cs.Code != "hash" || cs.Expires != 1 || len(cs.Events) != 1 || cs.Upgrade.Principal != ref {
 		t.Fatalf("answer erased challenge %s", state)
 	}
-	for _, ev := range []eventstore.Event{event("answer", map[string]string{"answered": "now"}), event("issue", challenge)} {
+	for _, ev := range []eventlib.Event{event("answer", map[string]string{"answered": "now"}), event("issue", challenge)} {
 		if _, e := r["core/challenge"].Apply(state, ev); e == nil {
 			t.Fatal("reused answered challenge")
 		}
@@ -272,7 +271,7 @@ func TestReducerJSONModels(t *testing.T) {
 	if e := decode([]byte(`{} trailing`), &cs); e == nil {
 		t.Fatal("accepted trailing bytes")
 	}
-	if _, e := Reducers()["core/account"].Apply([]byte(`{"unknown":1}`), eventstore.Event{Input: eventstore.Input{Action: "set-password", Payload: []byte(`{"password":"hash"}`)}}); e == nil {
+	if _, e := Reducers()["core/account"].Apply([]byte(`{"unknown":1}`), eventlib.Event{Input: eventlib.Input{Action: "set-password", Payload: []byte(`{"password":"hash"}`)}}); e == nil {
 		t.Fatal("accepted unknown state field")
 	}
 }
@@ -287,7 +286,7 @@ func TestReducerEncryptedComms(t *testing.T) {
 			if e != nil {
 				t.Fatal(e)
 			}
-			event := eventstore.Event{Input: eventstore.Input{Action: "prepare", Payload: normalized}, Number: 0}
+			event := eventlib.Event{Input: eventlib.Input{Action: "prepare", Payload: normalized}, Number: 0}
 			state, e := r.Apply(nil, event)
 			if e != nil {
 				t.Fatal(e)
@@ -318,7 +317,7 @@ func TestReducerEncryptedComms(t *testing.T) {
 					t.Fatal("accepted missing required field")
 				}
 			}
-			legacy := eventstore.Event{Input: eventstore.Input{Action: "send", Payload: reducerJSON(t, smsPayload{To: "recipient", Message: "body"})}}
+			legacy := eventlib.Event{Input: eventlib.Input{Action: "send", Payload: reducerJSON(t, smsPayload{To: "recipient", Message: "body"})}}
 			if domain == "comms/email" {
 				legacy.Input.Action = "send-auth-code"
 				legacy.Input.Payload = reducerJSON(t, Mail{From: "sender", To: "recipient", Subject: "subject", Body: "body"})

@@ -1,14 +1,13 @@
 package httpapi
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
-	"github.com/mejango/blossm-toolbox-go/transport"
 	"io"
 	"net/http"
 	"strings"
 
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 

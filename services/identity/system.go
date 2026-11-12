@@ -1,9 +1,5 @@
 package dia
 
-import commsmodel "github.com/mejango/dia-go/models/comms"
-import systemmodel "github.com/mejango/dia-go/models/system"
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/hmac"
@@ -17,7 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	commsmodel "github.com/mejango/dia-go/models/comms"
+	coremodel "github.com/mejango/dia-go/models/core"
+	systemmodel "github.com/mejango/dia-go/models/system"
 )
 
 type NodeInput struct {
@@ -62,12 +61,12 @@ func (s *Service) RegisterNode(ctx context.Context, token, key string, in NodeIn
 	sc.Subject = result.Node
 	var node systemmodel.NodeState
 	a, err := s.load(ctx, result.Node, &node)
-	if err != nil && !errors.Is(err, eventstore.ErrNotFound) {
+	if err != nil && !errors.Is(err, eventlib.ErrNotFound) {
 		return NodeResult{}, err
 	}
 	if a.Version > 0 {
 		if node.Network != in.Network || node.Scene != result.Scene {
-			return NodeResult{}, eventstore.ErrIdempotency
+			return NodeResult{}, eventlib.ErrIdempotency
 		}
 		result.Token = token
 		if recovering {
@@ -93,10 +92,10 @@ func (s *Service) RegisterNode(ctx context.Context, token, key string, in NodeIn
 	}
 	var principal coremodel.PrincipalState
 	pa, err := s.load(ctx, result.Principal, &principal)
-	if err != nil && !errors.Is(err, eventstore.ErrNotFound) {
+	if err != nil && !errors.Is(err, eventlib.ErrNotFound) {
 		return NodeResult{}, err
 	}
-	events := []eventstore.Input{}
+	events := []eventlib.Input{}
 	grants := []coremodel.RoleGrant{{ID: "SceneAdmin", Subject: result.Scene}, {ID: "GroupAdmin", Subject: result.Group}, {ID: "NodeAdmin", Subject: result.Node}}
 	events = append(events, s.event(result.Principal, "add-roles", operation+"/roles", pa.Version, map[string]any{"roles": grants}),
 		s.event(result.Scene, "register", operation+"/scene", 0, coremodel.SceneState{Subject: result.Node, Group: result.Group}),
@@ -155,7 +154,7 @@ func (s *Service) RegisterKey(ctx context.Context, token, kind, key string, in K
 		return result, err
 	}
 	if na.Version == 0 {
-		return result, eventstore.ErrNotFound
+		return result, eventlib.ErrNotFound
 	}
 	if len(s.HMACKey) < 32 {
 		return result, fmt.Errorf("%w: key HMAC secret", ErrUnavailable)
@@ -170,7 +169,7 @@ func (s *Service) RegisterKey(ctx context.Context, token, kind, key string, in K
 	state := systemmodel.KeyState{Name: in.Name, Network: node.Network, Secret: hex.EncodeToString(digest[:]), Scene: node.Scene, Principal: result.Principal, Subject: in.Node}
 	var old systemmodel.KeyState
 	a, err := s.load(ctx, result.Key, &old)
-	if err != nil && !errors.Is(err, eventstore.ErrNotFound) {
+	if err != nil && !errors.Is(err, eventlib.ErrNotFound) {
 		return KeyResult{}, err
 	}
 	if a.Version > 0 {
@@ -178,7 +177,7 @@ func (s *Service) RegisterKey(ctx context.Context, token, kind, key string, in K
 			return KeyResult{}, ErrForbidden
 		}
 		if old != state {
-			return KeyResult{}, eventstore.ErrIdempotency
+			return KeyResult{}, eventlib.ErrIdempotency
 		}
 		return result, nil
 	}
@@ -207,7 +206,7 @@ func (s *Service) ReadKey(ctx context.Context, token, kind string, key coremodel
 		return systemmodel.KeyState{}, err
 	}
 	if a.Version == 0 {
-		return systemmodel.KeyState{}, eventstore.ErrNotFound
+		return systemmodel.KeyState{}, eventlib.ErrNotFound
 	}
 	if err = s.require(ctx, c, state.Subject, "system:key:read"); err != nil {
 		return systemmodel.KeyState{}, err
@@ -230,7 +229,7 @@ func (s *Service) RevokeKey(ctx context.Context, token, kind, requestKey string,
 		return err
 	}
 	if a.Version == 0 {
-		return eventstore.ErrNotFound
+		return eventlib.ErrNotFound
 	}
 	if err = s.require(ctx, c, state.Subject, "system:key:create"); err != nil {
 		return err
@@ -563,7 +562,7 @@ func (s *Service) prepareComms(ctx context.Context, token, kind, key string, sub
 		}
 	}
 	if state.Subject != subject || state.RequestHash != digest {
-		return r, nil, eventstore.ErrIdempotency
+		return r, nil, eventlib.ErrIdempotency
 	}
 	ciphertext, err := hex.DecodeString(state.Delivery)
 	if err != nil {
@@ -574,7 +573,7 @@ func (s *Service) prepareComms(ctx context.Context, token, kind, key string, sub
 		return r, nil, err
 	}
 	if subtle.ConstantTimeCompare(plaintext, data) != 1 {
-		return r, nil, eventstore.ErrIdempotency
+		return r, nil, eventlib.ErrIdempotency
 	}
 	return r, plaintext, nil
 }

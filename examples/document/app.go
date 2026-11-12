@@ -4,19 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/mejango/dia-go/httpapi"
 	"net/http"
 	"reflect"
 	"strings"
 
-	"github.com/mejango/blossm-toolbox-go/delivery"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/procedures/command"
+	commandrpc "github.com/mejango/blossm-toolbox-go/procedures/command/rpc"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
 	"github.com/mejango/blossm-toolbox-go/procedures/fact"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
 	"github.com/mejango/blossm-toolbox-go/procedures/job"
 	"github.com/mejango/blossm-toolbox-go/procedures/projection"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/stores/view"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/delivery"
+	"github.com/mejango/blossm-toolbox-go/procedures/view_stores/generic"
+	"github.com/mejango/dia-go/httpapi"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -26,9 +29,9 @@ type Config struct {
 	Service           string
 	Internal          transport.TokenVerifier
 	Delegated         transport.TokenVerifier
-	Outbound          *transport.CommandClient
+	Outbound          *commandrpc.CommandClient
 	DeliveryVerifier  transport.TokenVerifier
-	Publisher         eventstore.Publisher
+	Publisher         eventlib.Publisher
 	InlinePublication bool
 	Queue             command.Queue
 	Replay            projection.Producer
@@ -41,7 +44,7 @@ type App struct {
 	Engine           *projection.Engine
 	Publication      *projection.PublicationAdapter
 	Delivery         *delivery.Consumer
-	Publisher        eventstore.Publisher
+	Publisher        eventlib.Publisher
 	Handler          http.Handler
 	network, service string
 }
@@ -73,7 +76,7 @@ func New(ctx context.Context, c Config) (*App, error) {
 		return nil, errors.New("outbound client requires a same-network service target and authenticator")
 	}
 	store := *c.Store
-	store.Reducers = make(map[string]eventstore.Reducer, len(c.Store.Reducers)+1)
+	store.Reducers = make(map[string]eventlib.Reducer, len(c.Store.Reducers)+1)
 	for key, r := range c.Store.Reducers {
 		store.Reducers[key] = r
 	}
@@ -83,8 +86,8 @@ func New(ctx context.Context, c Config) (*App, error) {
 	}
 	store.Reducers[key] = documentReducer{}
 	a := &App{Store: &store, Identity: c.Identity, network: c.Identity.Network, service: c.Service}
-	networkValue, _ := eventstore.Encode(a.network)
-	writer := &view.Store{Name: ViewName, Backend: store.Backend, Scope: view.Scope{Network: a.network, Service: a.service, Domain: Domain, Owner: []eventstore.Predicate{{Path: "owner.network", Value: networkValue}}}}
+	networkValue, _ := canonicaljson.Encode(a.network)
+	writer := &view.Store{Name: ViewName, Backend: store.Backend, Scope: view.Scope{Network: a.network, Service: a.service, Domain: Domain, Owner: []eventlib.Predicate{{Path: "owner.network", Value: networkValue}}}}
 	source := projection.Source{Network: a.network, Service: a.service, Domain: Domain}
 	a.Engine = &projection.Engine{Aggregates: a.Store, Views: writer, Push: c.Push, Handlers: map[projection.Source]projection.Handler{source: func(_ context.Context, in projection.Input) (projection.Plan, error) {
 		return projection.Plan{Mutations: []projection.Mutation{{ID: in.Aggregate.Root.ID, Body: in.Aggregate.State}}}, nil
@@ -95,7 +98,7 @@ func New(ctx context.Context, c Config) (*App, error) {
 		a.Publisher = a.Publication
 	}
 	a.Delivery = &delivery.Consumer{Commands: a.Store, Projections: a.Engine, Publications: a.Publication, Admit: a.admit,
-		Rejections: delivery.RejectionJournal{Backend: store.Backend, Scope: eventstore.Root{Network: a.network, Service: a.service, Domain: "$delivery", ID: "consumer"}},
+		Rejections: delivery.RejectionJournal{Backend: store.Backend, Scope: eventlib.Root{Network: a.network, Service: a.service, Domain: "$delivery", ID: "consumer"}},
 		Forbidden:  func(err error) bool { return errors.Is(err, dia.ErrForbidden) || errors.Is(err, command.ErrForbidden) },
 		OnRejected: c.OnRejected,
 	}
@@ -108,19 +111,19 @@ func New(ctx context.Context, c Config) (*App, error) {
 		if err != nil {
 			return view.Scope{}, err
 		}
-		raw, _ := eventstore.Encode(owner)
+		raw, _ := canonicaljson.Encode(owner)
 		// Match every Ref component through the typed owning state, not only ID.
 		var fields map[string]json.RawMessage
-		_ = eventstore.Decode(raw, &fields)
-		predicates := make([]eventstore.Predicate, 0, len(fields))
+		_ = canonicaljson.Decode(raw, &fields)
+		predicates := make([]eventlib.Predicate, 0, len(fields))
 		for name, value := range fields {
-			predicates = append(predicates, eventstore.Predicate{Path: "owner." + name, Value: value})
+			predicates = append(predicates, eventlib.Predicate{Path: "owner." + name, Value: value})
 		}
 		return view.Scope{Network: a.network, Service: a.service, Domain: Domain, Owner: predicates}, nil
 	}
 	check := func(_ context.Context, id transport.Identity, request transport.GatewayRequest) error {
 		var claims dia.Claims
-		if eventstore.Decode(id.Claims, &claims) != nil || (claims.Kind != "access" && (request.Request == nil || request.Request.Pattern != "POST /commands/{name}")) {
+		if canonicaljson.Decode(id.Claims, &claims) != nil || (claims.Kind != "access" && (request.Request == nil || request.Request.Pattern != "POST /commands/{name}")) {
 			return dia.ErrUnauthorized
 		}
 		_, err := principal(id.Context, a.network)
@@ -150,7 +153,7 @@ func New(ctx context.Context, c Config) (*App, error) {
 					return err
 				}
 				var claims dia.Claims
-				if err := eventstore.Decode(id.Claims, &claims); err != nil {
+				if err := canonicaljson.Decode(id.Claims, &claims); err != nil {
 					return dia.ErrUnauthorized
 				}
 				if claims.Kind == "service" {
@@ -202,7 +205,7 @@ func New(ctx context.Context, c Config) (*App, error) {
 	}
 	framework := transport.Framework{Authorize: authenticate, Store: a.Store, Network: a.network, Publisher: a.Publisher,
 		Commands: commands, Facts: map[string]fact.Procedure{"document": a.fact()}, Jobs: map[string]job.Procedure{"verify": a.verifyJob()},
-		Views: &transport.ViewGateway{Authorize: authority.View, Stores: map[string]eventstore.Backend{ViewName: store.Backend}}, Projections: &transport.ProjectionRoutes{Resolve: internal.Projection}}
+		Views: &transport.ViewGateway{Authorize: authority.View, Stores: map[string]eventlib.Backend{ViewName: store.Backend}}, Projections: &transport.ProjectionRoutes{Resolve: internal.Projection}}
 	handler, err := framework.Handler(ctx)
 	if err != nil {
 		return nil, err
@@ -223,7 +226,7 @@ func New(ctx context.Context, c Config) (*App, error) {
 			return
 		}
 		record, err := a.Delivery.Rejections.Lookup(r.Context(), r.PathValue("id"))
-		if errors.Is(err, eventstore.ErrNotFound) {
+		if errors.Is(err, eventlib.ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
@@ -248,7 +251,7 @@ func (p directReplay) Enqueue(ctx context.Context, r projection.Request) error {
 	return err
 }
 func (a *App) admit(_ context.Context, e delivery.Envelope) error {
-	allowed := func(r eventstore.Root) bool {
+	allowed := func(r eventlib.Root) bool {
 		return r.Network == a.network && r.Service == a.service && r.Domain == Domain && r.ID != ""
 	}
 	if e.Command != nil {

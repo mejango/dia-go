@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mejango/blossm-toolbox-go/delivery"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/delivery"
 )
 
 func TestRejectionLoggerEmitsOnlySafeRecord(t *testing.T) {

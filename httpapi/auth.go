@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
+
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -31,13 +33,13 @@ func DiaVerifier(service *dia.Service, kind string) (transport.TokenVerifier, er
 
 // DiaPermission checks one exact subject selected by trusted application policy.
 // Never accept an owner/context from the body as the authenticated identity.
-func DiaPermission(service *dia.Service, subject eventstore.Root, permission string) transport.GatewayCheck {
+func DiaPermission(service *dia.Service, subject eventlib.Root, permission string) transport.GatewayCheck {
 	return func(ctx context.Context, identity transport.Identity, _ transport.GatewayRequest) error {
 		if service == nil || subject.ID == "" || permission == "" {
 			return dia.ErrForbidden
 		}
 		var claims dia.Claims
-		if eventstore.Decode(identity.Claims, &claims) != nil {
+		if canonicaljson.Decode(identity.Claims, &claims) != nil {
 			return dia.ErrUnauthorized
 		}
 		return service.RequirePermission(ctx, claims, subject, permission)

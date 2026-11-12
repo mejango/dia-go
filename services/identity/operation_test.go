@@ -1,14 +1,13 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"errors"
 	"strings"
 	"testing"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 // Controls only the append/lookup boundary; real domain reducers commit the batch.
@@ -20,7 +19,7 @@ type receiptErrorStore struct {
 	appends, lookups     int
 }
 
-func (s *receiptErrorStore) Append(ctx context.Context, inputs []eventstore.Input) ([]eventstore.Receipt, error) {
+func (s *receiptErrorStore) Append(ctx context.Context, inputs []eventlib.Input) ([]eventlib.Receipt, error) {
 	s.appends++
 	if s.commit {
 		if _, err := s.systemTestStore.Append(ctx, inputs); err != nil {
@@ -41,10 +40,10 @@ func (s *receiptErrorStore) Append(ctx context.Context, inputs []eventstore.Inpu
 	}
 	return nil, s.appendErr
 }
-func (s *receiptErrorStore) Aggregate(ctx context.Context, root coremodel.Ref) (eventstore.Aggregate, error) {
+func (s *receiptErrorStore) Aggregate(ctx context.Context, root coremodel.Ref) (eventlib.Aggregate, error) {
 	s.lookups++
 	if s.appends > 0 && s.lookupErr != nil {
-		return eventstore.Aggregate{}, s.lookupErr
+		return eventlib.Aggregate{}, s.lookupErr
 	}
 	return s.systemTestStore.Aggregate(ctx, root)
 }
@@ -58,15 +57,15 @@ func TestAppendErrorReconcilesOnlyExactVisibleReceipt(t *testing.T) {
 		appendErr, lookupErr, want error
 	}{
 		{name: "raw committed", commit: true, appendErr: raw},
-		{name: "uncertain committed", commit: true, appendErr: eventstore.ErrUncertain},
-		{name: "conflict committed", commit: true, appendErr: eventstore.ErrConflict},
-		{name: "different receipt", commit: true, mismatch: true, appendErr: raw, want: eventstore.ErrIdempotency},
+		{name: "uncertain committed", commit: true, appendErr: eventlib.ErrUncertain},
+		{name: "conflict committed", commit: true, appendErr: eventlib.ErrConflict},
+		{name: "different receipt", commit: true, mismatch: true, appendErr: raw, want: eventlib.ErrIdempotency},
 		{name: "absent raw", appendErr: raw, want: raw},
-		{name: "absent uncertain", appendErr: eventstore.ErrUncertain, want: eventstore.ErrUncertain},
+		{name: "absent uncertain", appendErr: eventlib.ErrUncertain, want: eventlib.ErrUncertain},
 		{name: "unreadable raw", commit: true, appendErr: raw, lookupErr: lookup, want: raw},
-		{name: "unreadable uncertain", commit: true, appendErr: eventstore.ErrUncertain, lookupErr: lookup, want: eventstore.ErrUncertain},
+		{name: "unreadable uncertain", commit: true, appendErr: eventlib.ErrUncertain, lookupErr: lookup, want: eventlib.ErrUncertain},
 		{name: "canceled raw", commit: true, cancel: true, appendErr: raw, want: raw},
-		{name: "canceled uncertain", commit: true, cancel: true, appendErr: eventstore.ErrUncertain, want: eventstore.ErrUncertain},
+		{name: "canceled uncertain", commit: true, cancel: true, appendErr: eventlib.ErrUncertain, want: eventlib.ErrUncertain},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, explicit := range []bool{false, true} {
@@ -82,7 +81,7 @@ func TestAppendErrorReconcilesOnlyExactVisibleReceipt(t *testing.T) {
 					event := service.event(root, "set-subject", "request", 0, map[string]coremodel.Ref{"subject": service.root("core", "account", "account")})
 					var err error
 					if explicit {
-						err = service.appendAtomicRequest(ctx, []eventstore.Input{event}, mustJSON(map[string]string{"request": "original"}), service.root("core", "operation", "explicit"))
+						err = service.appendAtomicRequest(ctx, []eventlib.Input{event}, mustJSON(map[string]string{"request": "original"}), service.root("core", "operation", "explicit"))
 					} else {
 						err = service.append(ctx, event)
 					}
@@ -118,11 +117,11 @@ func TestCommsUncertainUnreadableReceiptDoesNotSend(t *testing.T) {
 	base.seed(claims.Context.Principal, coremodel.PrincipalState{Roles: []coremodel.RoleGrant{{ID: "CommsSender", Subject: subject}}})
 	provider := &systemTestMailer{}
 	service.Mail = provider
-	failing := &receiptErrorStore{systemTestStore: base, commit: true, appendErr: eventstore.ErrUncertain, lookupErr: errors.New("receipt unavailable")}
+	failing := &receiptErrorStore{systemTestStore: base, commit: true, appendErr: eventlib.ErrUncertain, lookupErr: errors.New("receipt unavailable")}
 	service.Store = failing
 	message := Mail{From: "sender@example.com", To: "recipient@example.com", Subject: "hello", Body: "private"}
 	ref, err := service.SendMailCommand(ctx, token, "access", "mail", subject, message)
-	if err != eventstore.ErrUncertain || ref.ID == "" || provider.calls != 0 || failing.appends != 1 {
+	if err != eventlib.ErrUncertain || ref.ID == "" || provider.calls != 0 || failing.appends != 1 {
 		t.Fatal("unproved preparation submitted mail", err, provider.calls)
 	}
 	service.Store = base

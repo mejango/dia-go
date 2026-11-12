@@ -1,11 +1,11 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"errors"
 	"testing"
+
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 func TestDelegatedContextUsesCurrentSessionRules(t *testing.T) {

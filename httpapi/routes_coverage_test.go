@@ -2,8 +2,6 @@
 
 package httpapi
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"bytes"
 	"context"
@@ -20,9 +18,11 @@ import (
 	"testing"
 	"time"
 
-	mongoStore "github.com/mejango/blossm-toolbox-go/storage/mongo"
-	"github.com/mejango/blossm-toolbox-go/storage/postgres"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	mongoStore "github.com/mejango/blossm-toolbox-go/vendors/mongodb"
+	"github.com/mejango/blossm-toolbox-go/vendors/postgres"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -31,7 +31,7 @@ func TestNativeRetainedRouteCoverage(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			ctx := context.Background()
 			namespace := fmt.Sprintf("route_coverage_%d", time.Now().UnixNano())
-			var backend eventstore.Backend
+			var backend eventlib.Backend
 			var err error
 			if kind == "postgres" {
 				if os.Getenv("POSTGRES_URL") == "" {

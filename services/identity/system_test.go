@@ -1,7 +1,5 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/ecdsa"
@@ -14,21 +12,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	querymatch "github.com/mejango/blossm-toolbox-go/lib/query"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 // This consumer fake uses the real reducers and raw last-event versions. It
 // stages the complete batch, including operation receipts, before committing.
 type systemTestStore struct {
 	mu         sync.Mutex
-	states     map[coremodel.Ref]eventstore.Aggregate
-	batches    [][]eventstore.Input
+	states     map[coremodel.Ref]eventlib.Aggregate
+	batches    [][]eventlib.Input
 	failBefore error
 	failAfter  error
 }
 
 func newSystemTestStore() *systemTestStore {
-	return &systemTestStore{states: map[coremodel.Ref]eventstore.Aggregate{}}
+	return &systemTestStore{states: map[coremodel.Ref]eventlib.Aggregate{}}
 }
 func (m *systemTestStore) seed(r coremodel.Ref, state any) {
 	m.mu.Lock()
@@ -37,37 +37,37 @@ func (m *systemTestStore) seed(r coremodel.Ref, state any) {
 	if err != nil {
 		panic(err)
 	}
-	m.states[r] = eventstore.Aggregate{Root: r, Version: 0, State: b}
+	m.states[r] = eventlib.Aggregate{Root: r, Version: 0, State: b}
 }
-func (m *systemTestStore) snapshot(r coremodel.Ref) eventstore.Aggregate {
+func (m *systemTestStore) snapshot(r coremodel.Ref) eventlib.Aggregate {
 	a, _ := m.Aggregate(context.Background(), r)
 	return a
 }
-func (m *systemTestStore) Aggregate(ctx context.Context, r coremodel.Ref) (eventstore.Aggregate, error) {
+func (m *systemTestStore) Aggregate(ctx context.Context, r coremodel.Ref) (eventlib.Aggregate, error) {
 	if err := ctx.Err(); err != nil {
-		return eventstore.Aggregate{}, err
+		return eventlib.Aggregate{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	a, ok := m.states[r]
 	if !ok {
-		return eventstore.Aggregate{Root: r, Version: -1, State: json.RawMessage(`{}`)}, nil
+		return eventlib.Aggregate{Root: r, Version: -1, State: json.RawMessage(`{}`)}, nil
 	}
 	a.State = append(json.RawMessage(nil), a.State...)
 	return a, nil
 }
-func (m *systemTestStore) Query(ctx context.Context, network, service, domain string, predicates []eventstore.Predicate) ([]eventstore.Aggregate, error) {
+func (m *systemTestStore) Query(ctx context.Context, network, service, domain string, predicates []eventlib.Predicate) ([]eventlib.Aggregate, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := []eventstore.Aggregate{}
+	out := []eventlib.Aggregate{}
 	for root, a := range m.states {
 		if root.Network != network || root.Service != service || root.Domain != domain {
 			continue
 		}
-		ok, err := eventstore.Matches(a.State, predicates)
+		ok, err := querymatch.Matches(a.State, predicates)
 		if err != nil {
 			return nil, err
 		}
@@ -78,7 +78,7 @@ func (m *systemTestStore) Query(ctx context.Context, network, service, domain st
 	}
 	return out, nil
 }
-func (m *systemTestStore) Append(ctx context.Context, inputs []eventstore.Input) ([]eventstore.Receipt, error) {
+func (m *systemTestStore) Append(ctx context.Context, inputs []eventlib.Input) ([]eventlib.Receipt, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -87,25 +87,25 @@ func (m *systemTestStore) Append(ctx context.Context, inputs []eventstore.Input)
 	if m.failBefore != nil {
 		return nil, m.failBefore
 	}
-	next := make(map[coremodel.Ref]eventstore.Aggregate, len(m.states))
+	next := make(map[coremodel.Ref]eventlib.Aggregate, len(m.states))
 	for r, a := range m.states {
 		next[r] = a
 	}
-	receipts := make([]eventstore.Receipt, 0, len(inputs))
+	receipts := make([]eventlib.Receipt, 0, len(inputs))
 	reducers := Reducers()
 	for _, in := range inputs {
 		a, ok := next[in.Root]
 		if !ok {
-			a = eventstore.Aggregate{Root: in.Root, Version: -1, State: json.RawMessage(`{}`)}
+			a = eventlib.Aggregate{Root: in.Root, Version: -1, State: json.RawMessage(`{}`)}
 		}
 		if in.Expected != nil && *in.Expected != a.Version+1 {
-			return nil, eventstore.ErrConflict
+			return nil, eventlib.ErrConflict
 		}
 		reducer, ok := reducers[in.Root.Service+"/"+in.Root.Domain]
 		if !ok {
 			return nil, ErrInvalid
 		}
-		event := eventstore.Event{Input: in, Number: a.Version + 1}
+		event := eventlib.Event{Input: in, Number: a.Version + 1}
 		state, err := reducer.Apply(a.State, event)
 		if err != nil {
 			return nil, err
@@ -113,10 +113,10 @@ func (m *systemTestStore) Append(ctx context.Context, inputs []eventstore.Input)
 		a.State = state
 		a.Version++
 		next[in.Root] = a
-		receipts = append(receipts, eventstore.Receipt{Outcome: eventstore.Committed, Event: event})
+		receipts = append(receipts, eventlib.Receipt{Outcome: eventlib.Committed, Event: event})
 	}
 	m.states = next
-	m.batches = append(m.batches, append([]eventstore.Input(nil), inputs...))
+	m.batches = append(m.batches, append([]eventlib.Input(nil), inputs...))
 	if m.failAfter != nil {
 		err := m.failAfter
 		m.failAfter = nil
@@ -195,7 +195,7 @@ func TestSystemNodeAtomicRegistrationAndReplay(t *testing.T) {
 	if err != nil || replay.Node != node.Node || len(store.batches) != 1 {
 		t.Fatalf("replay: %+v, %v", replay, err)
 	}
-	if _, err = s.RegisterNode(ctx, node.Token, "node", NodeInput{Network: "other.network"}); !errors.Is(err, eventstore.ErrIdempotency) {
+	if _, err = s.RegisterNode(ctx, node.Token, "node", NodeInput{Network: "other.network"}); !errors.Is(err, eventlib.ErrIdempotency) {
 		t.Fatalf("changed replay: %v", err)
 	}
 	recovered, err := s.RegisterNode(ctx, token, "node", NodeInput{Network: "node.network"})
@@ -229,7 +229,7 @@ func TestSystemKeySecretRecoveryAndAuthorization(t *testing.T) {
 	if err != nil || recovered != key || len(store.batches) != count {
 		t.Fatalf("recovery: %v", err)
 	}
-	if _, err = s.RegisterKey(ctx, node.Token, "access", "register-key", KeyInput{Node: node.Node, Name: "changed", Roles: []string{"NodeNetwork"}}); !errors.Is(err, eventstore.ErrIdempotency) {
+	if _, err = s.RegisterKey(ctx, node.Token, "access", "register-key", KeyInput{Node: node.Node, Name: "changed", Roles: []string{"NodeNetwork"}}); !errors.Is(err, eventlib.ErrIdempotency) {
 		t.Fatalf("changed key: %v", err)
 	}
 	if _, err = s.RegisterKey(ctx, node.Token, "access", "admin-key", KeyInput{Node: node.Node, Name: "bad", Roles: []string{"NodeAdmin"}}); !errors.Is(err, ErrForbidden) {
@@ -240,7 +240,7 @@ func TestSystemKeySecretRecoveryAndAuthorization(t *testing.T) {
 	if _, err = s.RegisterKey(ctx, node.Token, "access", "foreign", KeyInput{Node: other, Name: "bad", Roles: []string{"NodeNetwork"}}); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("cross-subject grant: %v", err)
 	}
-	store.failAfter = eventstore.ErrUncertain
+	store.failAfter = eventlib.ErrUncertain
 	input := KeyInput{Node: node.Node, Name: "uncertain", Roles: []string{"NodeNetwork"}}
 	if _, err = s.RegisterKey(ctx, node.Token, "access", "uncertain", input); err != nil {
 		t.Fatalf("lost response: %v", err)
@@ -382,7 +382,7 @@ func TestSystemConnectionBindingAndKeyRotation(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.HMACKey = []byte(strings.Repeat("r", 32))
-	if _, err = s.RegisterKey(ctx, node.Token, "access", "register-key", KeyInput{Node: node.Node, Name: "worker", Roles: []string{"NodeNetwork"}}); !errors.Is(err, eventstore.ErrIdempotency) {
+	if _, err = s.RegisterKey(ctx, node.Token, "access", "register-key", KeyInput{Node: node.Node, Name: "worker", Roles: []string{"NodeNetwork"}}); !errors.Is(err, eventlib.ErrIdempotency) {
 		t.Fatalf("rotation silently returned a different secret: %v", err)
 	}
 	if _, err = s.OpenConnection(ctx, ConnectionInput{Key: key.Key, Secret: key.Secret}); err != nil {
@@ -488,7 +488,7 @@ func TestSystemCommsCommandsPersistEncryptedIntentBeforeDelivery(t *testing.T) {
 		t.Fatal("delivery before durable intent")
 	}
 	store.failBefore = nil
-	store.failAfter = eventstore.ErrUncertain
+	store.failAfter = eventlib.ErrUncertain
 	root, err := s.SendMailCommand(ctx, token, "access", "mail", subject, message)
 	if err != nil || mailer.calls != 1 || root.ID == "" {
 		t.Fatalf("visible preparation receipt: %v", err)
@@ -514,7 +514,7 @@ func TestSystemCommsCommandsPersistEncryptedIntentBeforeDelivery(t *testing.T) {
 		t.Fatalf("explicit resend: %v", err)
 	}
 	message.Body = "changed message"
-	if _, err = s.SendMailCommand(ctx, token, "access", "mail", subject, message); !errors.Is(err, eventstore.ErrIdempotency) || mailer.calls != 3 {
+	if _, err = s.SendMailCommand(ctx, token, "access", "mail", subject, message); !errors.Is(err, eventlib.ErrIdempotency) || mailer.calls != 3 {
 		t.Fatalf("changed delivery intent: %v", err)
 	}
 	sms := &systemTestSMS{err: errors.New("provider failed")}
@@ -565,7 +565,7 @@ func TestSystemNodeLostResponseRecoveryIsExact(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			store.failAfter = eventstore.ErrUncertain
+			store.failAfter = eventlib.ErrUncertain
 			input := NodeInput{Network: "node.network"}
 			if _, err = s.RegisterNode(ctx, token, "lost-node", input); err != nil {
 				t.Fatalf("lost response: %v", err)
@@ -588,7 +588,7 @@ func TestSystemNodeLostResponseRecoveryIsExact(t *testing.T) {
 			if _, err = s.RegisterNode(ctx, token, "uncommitted-node", input); !errors.Is(err, ErrUnauthorized) || len(store.batches) != count {
 				t.Fatalf("stale token created new node: %v", err)
 			}
-			if _, err = s.RegisterNode(ctx, token, "lost-node", NodeInput{Network: "different.network"}); !errors.Is(err, eventstore.ErrIdempotency) {
+			if _, err = s.RegisterNode(ctx, token, "lost-node", NodeInput{Network: "different.network"}); !errors.Is(err, eventlib.ErrIdempotency) {
 				t.Fatalf("changed request recovered: %v", err)
 			}
 			var committed coremodel.SessionState

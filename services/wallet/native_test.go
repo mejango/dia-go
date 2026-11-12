@@ -2,8 +2,6 @@
 
 package wallet
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"bytes"
 	"context"
@@ -24,16 +22,18 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/onchain/evm"
-	mongoStore "github.com/mejango/blossm-toolbox-go/storage/mongo"
-	"github.com/mejango/blossm-toolbox-go/storage/postgres"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	mongoStore "github.com/mejango/blossm-toolbox-go/vendors/mongodb"
+	"github.com/mejango/blossm-toolbox-go/vendors/postgres"
+	coremodel "github.com/mejango/dia-go/models/core"
 	"github.com/mejango/dia-go/services/identity"
 )
 
 type nativeFixture struct {
 	kind, uri, namespace string
-	backend              eventstore.Backend
+	backend              eventlib.Backend
 }
 
 func newNative(t *testing.T, kind string) *nativeFixture {
@@ -116,7 +116,7 @@ func ownerToken(t *testing.T, ctx context.Context, auth *dia.Service, label stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	scene, err := auth.RegisterScene(ctx, session.Token, "scene-"+label, eventstore.Root{Network: "local", Service: "example", Domain: "workspace", ID: label})
+	scene, err := auth.RegisterScene(ctx, session.Token, "scene-"+label, eventlib.Root{Network: "local", Service: "example", Domain: "workspace", ID: label})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,18 +342,18 @@ func (failedKeys) Open(context.Context, []byte, []byte) ([]byte, error) {
 var errNonceWrite = errors.New("injected failure during nonce event write")
 
 type failNonceBackend struct {
-	eventstore.Backend
+	eventlib.Backend
 	written *bool
 }
 type failNonceTx struct {
-	eventstore.Tx
+	eventlib.Tx
 	written *bool
 }
 
-func (b failNonceBackend) Update(ctx context.Context, fn func(eventstore.Tx) error) error {
-	return b.Backend.Update(ctx, func(tx eventstore.Tx) error { return fn(failNonceTx{Tx: tx, written: b.written}) })
+func (b failNonceBackend) Update(ctx context.Context, fn func(eventlib.Tx) error) error {
+	return b.Backend.Update(ctx, func(tx eventlib.Tx) error { return fn(failNonceTx{Tx: tx, written: b.written}) })
 }
-func (tx failNonceTx) PutEvent(ctx context.Context, event eventstore.Event) error {
+func (tx failNonceTx) PutEvent(ctx context.Context, event eventlib.Event) error {
 	if event.Input.Root.Domain == "nonce" {
 		return errNonceWrite
 	}
@@ -394,7 +394,7 @@ func TestNativeJournalAtomicity(t *testing.T) {
 			if next, err := journal.NextNonce(ctx, "1", first.From, 0); err != nil || next != 0 {
 				t.Fatal("rolled back nonce survived", next, err)
 			}
-			if err = store.Backend.View(ctx, func(reader eventstore.Reader) error {
+			if err = store.Backend.View(ctx, func(reader eventlib.Reader) error {
 				pending, err := reader.Pending(ctx, 100)
 				if err == nil && len(pending) != 0 {
 					return errors.New("rolled back publication survived")

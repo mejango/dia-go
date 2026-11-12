@@ -1,16 +1,17 @@
 package httpapi
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"encoding/json"
-	"github.com/mejango/blossm-toolbox-go/transport"
 	"net"
 	"net/http"
 	"strings"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
+	coremodel "github.com/mejango/dia-go/models/core"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
@@ -60,8 +61,8 @@ func (a API) Handler() http.Handler {
 		if e != nil {
 			return e
 		}
-		var p eventstore.Projection
-		e = a.Store.Backend.View(r.Context(), func(reader eventstore.Reader) error {
+		var p eventlib.Projection
+		e = a.Store.Backend.View(r.Context(), func(reader eventlib.Reader) error {
 			var e error
 			p, e = reader.Projection(r.Context(), c.Context.Session.Key())
 			return e
@@ -81,7 +82,7 @@ func (a API) Handler() http.Handler {
 // aggregate and revision. Duplicate/out-of-order notices cannot roll it back.
 type SessionProjection struct{ Store *eventstore.Store }
 
-func (p SessionProjection) Publish(ctx context.Context, notice eventstore.Publication) error {
+func (p SessionProjection) Publish(ctx context.Context, notice eventlib.Publication) error {
 	root := notice.Event.Input.Root
 	if root.Service != "core" || root.Domain != "session" {
 		return nil
@@ -94,13 +95,13 @@ func (p SessionProjection) Publish(ctx context.Context, notice eventstore.Public
 	if e = json.Unmarshal(a.State, &state); e != nil {
 		return e
 	}
-	body, e := eventstore.Encode(struct {
+	body, e := canonicaljson.Encode(struct {
 		Device coremodel.Device `json:"device"`
 	}{state.Device})
 	if e != nil {
 		return e
 	}
-	_, e = p.Store.Project(ctx, eventstore.Projection{ID: root.Key(), Root: root, Version: a.Version, Body: body, Deleted: state.Terminated != ""})
+	_, e = p.Store.Project(ctx, eventlib.Projection{ID: root.Key(), Root: root, Version: a.Version, Body: body, Deleted: state.Terminated != ""})
 	return e
 }
 

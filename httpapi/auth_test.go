@@ -1,8 +1,5 @@
 package httpapi
 
-import systemmodel "github.com/mejango/dia-go/models/system"
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/ecdsa"
@@ -12,29 +9,32 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
+	coremodel "github.com/mejango/dia-go/models/core"
+	systemmodel "github.com/mejango/dia-go/models/system"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
 type authState struct {
 	dia.Store
-	rows map[eventstore.Root]eventstore.Aggregate
+	rows map[eventlib.Root]eventlib.Aggregate
 }
 
-func (s *authState) Aggregate(ctx context.Context, r eventstore.Root) (eventstore.Aggregate, error) {
+func (s *authState) Aggregate(ctx context.Context, r eventlib.Root) (eventlib.Aggregate, error) {
 	if err := ctx.Err(); err != nil {
-		return eventstore.Aggregate{}, err
+		return eventlib.Aggregate{}, err
 	}
 	v, ok := s.rows[r]
 	if !ok {
-		return v, eventstore.ErrNotFound
+		return v, eventlib.ErrNotFound
 	}
 	return v, nil
 }
-func (s *authState) put(r eventstore.Root, v any) {
-	body, _ := eventstore.Encode(v)
-	s.rows[r] = eventstore.Aggregate{Root: r, Version: 1, State: body}
+func (s *authState) put(r eventlib.Root, v any) {
+	body, _ := canonicaljson.Encode(v)
+	s.rows[r] = eventlib.Aggregate{Root: r, Version: 1, State: body}
 }
 func gatewayJWT(t *testing.T) (dia.JWT, dia.Claims) {
 	t.Helper()
@@ -43,14 +43,14 @@ func gatewayJWT(t *testing.T) (dia.JWT, dia.Claims) {
 		t.Fatal(err)
 	}
 	now := time.Now().Unix()
-	return dia.JWT{Signer: dia.LocalSigner{Key: key}, VerifyKey: &key.PublicKey, Issuer: "issuer", Audience: "n"}, dia.Claims{Issuer: "issuer", Audience: []string{"n"}, Subject: "p", ID: "jti", Kind: "access", NotBefore: now - 1, Expires: now + 600, Context: coremodel.SessionContext{Network: "n", Session: eventstore.Root{Network: "n", Service: "core", Domain: "session", ID: "s"}, Principal: eventstore.Root{Network: "n", Service: "core", Domain: "principal", ID: "p"}}}
+	return dia.JWT{Signer: dia.LocalSigner{Key: key}, VerifyKey: &key.PublicKey, Issuer: "issuer", Audience: "n"}, dia.Claims{Issuer: "issuer", Audience: []string{"n"}, Subject: "p", ID: "jti", Kind: "access", NotBefore: now - 1, Expires: now + 600, Context: coremodel.SessionContext{Network: "n", Session: eventlib.Root{Network: "n", Service: "core", Domain: "session", ID: "s"}, Principal: eventlib.Root{Network: "n", Service: "core", Domain: "principal", ID: "p"}}}
 }
 func TestGatewayDiaSessionAndConnectionAuthority(t *testing.T) {
 	jwt, claims := gatewayJWT(t)
-	state := &authState{rows: map[eventstore.Root]eventstore.Aggregate{}}
+	state := &authState{rows: map[eventlib.Root]eventlib.Aggregate{}}
 	session := coremodel.SessionState{Expires: claims.Expires, Principal: claims.Context.Principal}
 	state.put(claims.Context.Session, session)
-	subject := eventstore.Root{Network: "n", Service: "core", Domain: "account", ID: "account"}
+	subject := eventlib.Root{Network: "n", Service: "core", Domain: "account", ID: "account"}
 	state.put(claims.Context.Principal, coremodel.PrincipalState{Roles: []coremodel.RoleGrant{{ID: "AccountAdmin", Subject: subject}}})
 	service := &dia.Service{JWT: &jwt, Store: state, Network: "n"}
 	verify, err := DiaVerifier(service, "access")
@@ -88,7 +88,7 @@ func TestGatewayDiaSessionAndConnectionAuthority(t *testing.T) {
 	if _, err = wrongVerify(context.Background(), token); !errors.Is(err, dia.ErrUnauthorized) {
 		t.Fatal("cross-service token accepted", err)
 	}
-	key := eventstore.Root{Network: "n", Service: "system", Domain: "key", ID: "key"}
+	key := eventlib.Root{Network: "n", Service: "system", Domain: "key", ID: "key"}
 	claims.Kind = "connection"
 	claims.Context.Subject = key
 	state.put(key, systemmodel.KeyState{Principal: claims.Context.Principal})

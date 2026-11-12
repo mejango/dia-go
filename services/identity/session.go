@@ -1,15 +1,15 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"net/mail"
 	"strings"
+
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 type SessionResult struct {
@@ -37,7 +37,7 @@ func (s *Service) StartSession(ctx context.Context, key string, device coremodel
 	r := s.root("core", "session", stableID(key, "session"))
 	var state coremodel.SessionState
 	a, e := s.load(ctx, r, &state)
-	if e != nil && !errors.Is(e, eventstore.ErrNotFound) {
+	if e != nil && !errors.Is(e, eventlib.ErrNotFound) {
 		return SessionResult{}, e
 	}
 	if a.Version == 0 {
@@ -46,7 +46,7 @@ func (s *Service) StartSession(ctx context.Context, key string, device coremodel
 			return SessionResult{}, e
 		}
 	} else if state.Device != device {
-		return SessionResult{}, eventstore.ErrIdempotency
+		return SessionResult{}, eventlib.ErrIdempotency
 	}
 	if state.Principal.ID != "" || state.Account.ID != "" || state.Scene.ID != "" {
 		return SessionResult{}, ErrUnauthorized
@@ -127,7 +127,7 @@ func (s *Service) SetPassword(ctx context.Context, token, key, password string) 
 			if decode(op.Inputs[0].Payload, &prior) == nil && CheckPassword(password, prior.Password) {
 				return nil
 			}
-			return eventstore.ErrIdempotency
+			return eventlib.ErrIdempotency
 		}
 		return errors.New("password already set")
 	}
@@ -162,7 +162,7 @@ func (s *Service) ChangeScene(ctx context.Context, token, key string, scene core
 			Scene coremodel.Ref `json:"scene"`
 		}
 		if decode(op.Inputs[0].Payload, &prior) != nil || prior.Scene != scene {
-			return SessionResult{}, eventstore.ErrIdempotency
+			return SessionResult{}, eventlib.ErrIdempotency
 		}
 	}
 

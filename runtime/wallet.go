@@ -11,8 +11,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/mejango/blossm-toolbox-go/onchain/evm"
-	"github.com/mejango/blossm-toolbox-go/runtime/env"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/env"
 	"github.com/mejango/dia-go/services/identity"
 	"github.com/mejango/dia-go/services/wallet"
 )

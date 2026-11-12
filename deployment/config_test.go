@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mejango/blossm-toolbox-go/cli"
+	"github.com/mejango/blossm-toolbox-go/cli/blossm"
 )
 
 func example(t *testing.T, name string) cli.Config {

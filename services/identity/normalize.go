@@ -1,6 +1,8 @@
 package dia
 
-import "strings"
+import (
+	"strings"
+)
 
 // NormalizeEmail is shared by account identity and challenge issuance.
 func NormalizeEmail(value string) (string, error) { return normalizeEmail(value) }

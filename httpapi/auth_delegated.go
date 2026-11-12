@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/mejango/blossm-toolbox-go/transport"
 	"net/http"
 	"time"
 
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/procedures/command"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/gateways"
 	dia "github.com/mejango/dia-go/services/identity"
 )
 
-// DelegatedCommandAuthorizer is installed on a transport.CommandClient used inside an
+// DelegatedCommandAuthorizer is installed on a commandrpc.CommandClient used inside an
 // authenticated Main. parent must be the transport.Framework-authenticated request, never
 // raw client JSON. jwt is the issuing peer's signer with the target service's
 // exact audience; peerSubject identifies that peer, not the delegated user.
@@ -27,16 +28,16 @@ func DelegatedCommandAuthorizer(jwt dia.JWT, identity *dia.Service, peerSubject 
 			return nil, err
 		}
 		var c dia.Claims
-		if eventstore.Decode(parent.Claims, &c) != nil || (c.Kind != "access" && c.Kind != "service") {
+		if canonicaljson.Decode(parent.Claims, &c) != nil || (c.Kind != "access" && c.Kind != "service") {
 			return nil, dia.ErrUnauthorized
 		}
 		// The procedure's authenticated context and its audit claims must agree.
 		// Prevent application code accidentally substituting a body-selected actor.
-		claimContext, err := eventstore.Encode(c.Context)
+		claimContext, err := canonicaljson.Encode(c.Context)
 		if err != nil {
 			return nil, err
 		}
-		actualContext, err := eventstore.Encode(parent.Context)
+		actualContext, err := canonicaljson.Encode(parent.Context)
 		if err != nil || !bytes.Equal(claimContext, actualContext) {
 			return nil, dia.ErrUnauthorized
 		}
@@ -89,7 +90,7 @@ func DelegatedCommandVerifier(jwt dia.JWT, identity *dia.Service, peerSubject st
 			return transport.Identity{}, err
 		}
 		var claims dia.Claims
-		if eventstore.Decode(verified.Claims, &claims) != nil || len(claims.Audience) != 1 || claims.Audience[0] != jwt.Audience {
+		if canonicaljson.Decode(verified.Claims, &claims) != nil || len(claims.Audience) != 1 || claims.Audience[0] != jwt.Audience {
 			return transport.Identity{}, dia.ErrUnauthorized
 		}
 		// A generic peer token is not sufficient: it must carry the bound delegated
@@ -116,7 +117,7 @@ func DelegatedCommandCheck(ctx context.Context, identity transport.Identity, req
 		return dia.ErrForbidden
 	}
 	var claims dia.Claims
-	if eventstore.Decode(identity.Claims, &claims) != nil || claims.Kind != "service" {
+	if canonicaljson.Decode(identity.Claims, &claims) != nil || claims.Kind != "service" {
 		return dia.ErrUnauthorized
 	}
 	var in command.Request
@@ -154,7 +155,7 @@ func DelegatedCommandGateway(jwt dia.JWT, identity *dia.Service, peerSubject str
 
 const delegatedIDPrefix = "command-delegation-v1:"
 
-func delegatedTransactionID(transaction eventstore.Transaction) (string, error) {
+func delegatedTransactionID(transaction eventlib.Transaction) (string, error) {
 	if transaction.ID == "" || len(transaction.ID) > 1024 || transaction.Issued == "" {
 		return "", dia.ErrInvalid
 	}
@@ -167,14 +168,14 @@ func delegatedTransactionID(transaction eventstore.Transaction) (string, error) 
 			return "", dia.ErrInvalid
 		}
 	}
-	// Claims are authenticated separately and are not forwarded by transport.CommandClient.
+	// Claims are authenticated separately and are not forwarded by commandrpc.CommandClient.
 	// Nil and empty trace slices represent the same empty parent trace.
-	path := append([]eventstore.Trace{}, transaction.Path...)
-	digest, err := eventstore.Digest(struct {
-		Domain        string             `json:"domain"`
-		TransactionID string             `json:"transactionId"`
-		Issued        string             `json:"issued"`
-		Path          []eventstore.Trace `json:"path"`
+	path := append([]eventlib.Trace{}, transaction.Path...)
+	digest, err := canonicaljson.Digest(struct {
+		Domain        string           `json:"domain"`
+		TransactionID string           `json:"transactionId"`
+		Issued        string           `json:"issued"`
+		Path          []eventlib.Trace `json:"path"`
 	}{delegatedIDPrefix, transaction.ID, issued.UTC().Format(time.RFC3339Nano), path})
 	if err != nil {
 		return "", err

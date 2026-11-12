@@ -2,8 +2,6 @@
 
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"errors"
@@ -12,9 +10,11 @@ import (
 	"testing"
 	"time"
 
-	mongoStore "github.com/mejango/blossm-toolbox-go/storage/mongo"
-	"github.com/mejango/blossm-toolbox-go/storage/postgres"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	mongoStore "github.com/mejango/blossm-toolbox-go/vendors/mongodb"
+	"github.com/mejango/blossm-toolbox-go/vendors/postgres"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 func TestNativeRemoveRolesRequestRecovery(t *testing.T) {
@@ -22,7 +22,7 @@ func TestNativeRemoveRolesRequestRecovery(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			ctx := context.Background()
 			namespace := fmt.Sprintf("remove_roles_%d", time.Now().UnixNano())
-			var backend eventstore.Backend
+			var backend eventlib.Backend
 			var err error
 			if kind == "postgres" {
 				if os.Getenv("POSTGRES_URL") == "" {
@@ -92,23 +92,23 @@ func TestNativeRemoveRolesRequestRecovery(t *testing.T) {
 			if err = s.RemoveRoles(ctx, node.Token, "empty-new-action", node.Principal, nil, subjects); !errors.Is(err, ErrForbidden) {
 				t.Fatal("empty expansion created unauthorized no-op", err)
 			}
-			if err = s.RemoveRoles(ctx, node.Token, "remove", node.Principal, nil, subjects); !errors.Is(err, eventstore.ErrIdempotency) {
+			if err = s.RemoveRoles(ctx, node.Token, "remove", node.Principal, nil, subjects); !errors.Is(err, eventlib.ErrIdempotency) {
 				t.Fatal("changed explicit request accepted", err)
 			}
-			if err = s.RemoveRoles(ctx, node.Token, "remove", node.Principal, explicit, []coremodel.Ref{node.Node}); !errors.Is(err, eventstore.ErrIdempotency) {
+			if err = s.RemoveRoles(ctx, node.Token, "remove", node.Principal, explicit, []coremodel.Ref{node.Node}); !errors.Is(err, eventlib.ErrIdempotency) {
 				t.Fatal("changed subject request accepted", err)
 			}
 			if err = s.RemoveRoles(ctx, stranger.Token, "remove", node.Principal, explicit, subjects); !errors.Is(err, ErrForbidden) {
 				t.Fatal("other caller recovered receipt", err)
 			}
-			if err = s.RemoveRoles(ctx, node.Token, "remove", stranger.Principal, []coremodel.RoleGrant{{ID: "GroupAdmin", Subject: stranger.Group}}, []coremodel.Ref{stranger.Group}); !errors.Is(err, eventstore.ErrIdempotency) {
+			if err = s.RemoveRoles(ctx, node.Token, "remove", stranger.Principal, []coremodel.RoleGrant{{ID: "GroupAdmin", Subject: stranger.Group}}, []coremodel.Ref{stranger.Group}); !errors.Is(err, eventlib.ErrIdempotency) {
 				t.Fatal("changed target used recovery authority", err)
 			}
 			// A later authorized grant must survive an old removal retry.
 			if err = s.ChangeRoles(ctx, delegate.Token, "regrant", node.Principal, grants, false); err != nil {
 				t.Fatal(err)
 			}
-			if err = s.RemoveRoles(ctx, node.Token, "remove", delegate.Principal, explicit, subjects); !errors.Is(err, eventstore.ErrIdempotency) {
+			if err = s.RemoveRoles(ctx, node.Token, "remove", delegate.Principal, explicit, subjects); !errors.Is(err, eventlib.ErrIdempotency) {
 				t.Fatal("same key authorized target change accepted", err)
 			}
 			before, err = store.Aggregate(ctx, node.Principal)

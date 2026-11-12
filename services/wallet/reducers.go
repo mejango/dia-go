@@ -8,8 +8,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/onchain/evm"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 )
 
 type reducer struct{ domain string }
@@ -21,19 +22,19 @@ func (r reducer) Normalize(action string, raw json.RawMessage) (json.RawMessage,
 		if action != "create" {
 			return nil, errors.New("unknown wallet action")
 		}
-		if e := eventstore.Decode(raw, &w); e != nil {
+		if e := canonicaljson.Decode(raw, &w); e != nil {
 			return nil, e
 		}
 		if w.ID == "" || w.Owner == "" || w.Address == (common.Address{}) || len(w.EncryptedKey) < 16 {
 			return nil, errors.New("invalid wallet")
 		}
-		return eventstore.Encode(w)
+		return canonicaljson.Encode(w)
 	case "transaction":
 		var p evm.Prepared
 		if action != "prepare" {
 			return nil, errors.New("unknown transaction action")
 		}
-		if e := eventstore.Decode(raw, &p); e != nil {
+		if e := canonicaljson.Decode(raw, &p); e != nil {
 			return nil, e
 		}
 		var tx types.Transaction
@@ -44,26 +45,26 @@ func (r reducer) Normalize(action string, raw json.RawMessage) (json.RawMessage,
 		if e != nil || p.ID == "" || p.Intent == (common.Hash{}) || tx.Type() != types.DynamicFeeTxType || tx.ChainId().Sign() <= 0 || tx.ChainId().BitLen() > 256 || tx.Hash() != p.Hash || tx.Nonce() != p.Nonce || sender != p.From || tx.ChainId().String() != p.ChainID {
 			return nil, errors.New("invalid signed transaction")
 		}
-		return eventstore.Encode(p)
+		return canonicaljson.Encode(p)
 	case "nonce":
 		var p nonceState
 		if action != "reserve" {
 			return nil, errors.New("unknown nonce action")
 		}
-		if e := eventstore.Decode(raw, &p); e != nil {
+		if e := canonicaljson.Decode(raw, &p); e != nil {
 			return nil, e
 		}
 		n, e := strconv.ParseUint(p.Next, 10, 64)
 		if e != nil || n == 0 || fmt.Sprint(n) != p.Next {
 			return nil, errors.New("invalid nonce frontier")
 		}
-		return eventstore.Encode(p)
+		return canonicaljson.Encode(p)
 	case "observation":
 		var p evm.Observation
 		if action != "observe" {
 			return nil, errors.New("unknown observation action")
 		}
-		if e := eventstore.Decode(raw, &p); e != nil {
+		if e := canonicaljson.Decode(raw, &p); e != nil {
 			return nil, e
 		}
 		if p.ID == "" || p.Hash == (common.Hash{}) {
@@ -77,11 +78,11 @@ func (r reducer) Normalize(action string, raw json.RawMessage) (json.RawMessage,
 		if (p.State == evm.Succeeded || p.State == evm.Failed) && (p.Confirmations == 0 || p.BlockHash == (common.Hash{})) {
 			return nil, errors.New("terminal observation lacks evidence")
 		}
-		return eventstore.Encode(p)
+		return canonicaljson.Encode(p)
 	}
 	return nil, errors.New("unknown wallet domain")
 }
-func (r reducer) Apply(state json.RawMessage, event eventstore.Event) (json.RawMessage, error) {
+func (r reducer) Apply(state json.RawMessage, event eventlib.Event) (json.RawMessage, error) {
 	if (r.domain == "address" || r.domain == "transaction") && event.Number != 0 {
 		return nil, errors.New("immutable wallet record")
 	}
@@ -116,8 +117,8 @@ func (r reducer) Apply(state json.RawMessage, event eventstore.Event) (json.RawM
 	}
 	return p, nil
 }
-func Reducers() map[string]eventstore.Reducer {
-	m := map[string]eventstore.Reducer{}
+func Reducers() map[string]eventlib.Reducer {
+	m := map[string]eventlib.Reducer{}
 	for _, d := range []string{"address", "transaction", "nonce", "observation"} {
 		m["wallet/"+d] = reducer{d}
 	}

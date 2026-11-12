@@ -12,8 +12,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	canonicaljson "github.com/mejango/blossm-toolbox-go/lib/canonical_json"
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 	"github.com/mejango/blossm-toolbox-go/onchain/evm"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"github.com/mejango/dia-go/services/identity"
 )
 
@@ -55,7 +56,7 @@ func (s Service) Handler() http.Handler {
 			if e != nil {
 				return dia.ErrInvalid
 			}
-			if e = eventstore.Decode(raw, v); e != nil {
+			if e = canonicaljson.Decode(raw, v); e != nil {
 				return dia.ErrInvalid
 			}
 			return nil
@@ -127,7 +128,7 @@ func (s Service) Handler() http.Handler {
 			case errors.Is(err, dia.ErrInvalid):
 				status = 400
 				message = "invalid input"
-			case errors.Is(err, evm.ErrConflict), errors.Is(err, evm.ErrNonceConflict), errors.Is(err, eventstore.ErrConflict):
+			case errors.Is(err, evm.ErrConflict), errors.Is(err, evm.ErrNonceConflict), errors.Is(err, eventlib.ErrConflict):
 				status = 409
 				message = "conflict"
 			}

@@ -1,7 +1,5 @@
 package diaruntime
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"encoding/json"
@@ -14,12 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mejango/blossm-toolbox-go/runtime/auth"
-	"github.com/mejango/blossm-toolbox-go/runtime/env"
-	"github.com/mejango/blossm-toolbox-go/runtime/publication"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/blossm-toolbox-go/transport"
+	cors "github.com/mejango/blossm-toolbox-go/middleware/cors"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/auth"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/env"
+	"github.com/mejango/blossm-toolbox-go/procedures/server/publication"
 	"github.com/mejango/dia-go/httpapi"
+	coremodel "github.com/mejango/dia-go/models/core"
 	"github.com/mejango/dia-go/services/identity"
 	"github.com/mejango/dia-go/services/wallet"
 )
@@ -156,7 +155,7 @@ func Run(ctx context.Context) (resultErr error) {
 			return errors.New("invalid CORS_ORIGINS")
 		}
 	}
-	handler, e := transport.CORS(mux, origins)
+	handler, e := cors.CORS(mux, origins)
 	if e != nil {
 		return e
 	}

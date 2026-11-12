@@ -3,20 +3,22 @@ package main
 import (
 	"context"
 	"errors"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
-	"github.com/mejango/dia-go/httpapi"
-	dia "github.com/mejango/dia-go/services/identity"
 	"io"
 	"net"
 	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	"github.com/mejango/blossm-toolbox-go/procedures/event_stores/generic"
+	"github.com/mejango/dia-go/httpapi"
+	dia "github.com/mejango/dia-go/services/identity"
 )
 
 type countingPublisher struct{ calls atomic.Int32 }
 
-func (p *countingPublisher) Publish(context.Context, eventstore.Publication) error {
+func (p *countingPublisher) Publish(context.Context, eventlib.Publication) error {
 	p.calls.Add(1)
 	return nil
 }
@@ -27,7 +29,7 @@ func TestPublicationRouting(t *testing.T) {
 		network, service, domain string
 		want                     error
 	}{{"network", "notes", "document", nil}, {"network", "core", "session", dia.ErrForbidden}, {"network", "wallet", "wallet", dia.ErrForbidden}, {"network", "system", "node", dia.ErrForbidden}, {"network", "comms", "message", dia.ErrForbidden}, {"network", "notes", "wallet", dia.ErrForbidden}, {"other", "notes", "document", dia.ErrForbidden}, {"network", "foreign", "document", dia.ErrForbidden}} {
-		err := router.Publish(context.Background(), eventstore.Publication{Event: eventstore.Event{Input: eventstore.Input{Root: eventstore.Root{Network: tc.network, Service: tc.service, Domain: tc.domain}}}})
+		err := router.Publish(context.Background(), eventlib.Publication{Event: eventlib.Event{Input: eventlib.Input{Root: eventlib.Root{Network: tc.network, Service: tc.service, Domain: tc.domain}}}})
 		if !errors.Is(err, tc.want) {
 			t.Fatal(err)
 		}

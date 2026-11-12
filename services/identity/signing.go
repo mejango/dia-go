@@ -1,8 +1,9 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
-import "github.com/mejango/blossm-toolbox-go/security/token"
+import (
+	"github.com/mejango/blossm-toolbox-go/lib/jwt"
+	coremodel "github.com/mejango/dia-go/models/core"
+)
 
 type JWT = token.JWT[coremodel.SessionContext]
 type Claims = token.Claims[coremodel.SessionContext]

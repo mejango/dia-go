@@ -5,19 +5,20 @@ package dia
 import (
 	"context"
 	"errors"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"testing"
+
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
 )
 
 // Preserve transaction evidence on failure without changing retry semantics.
 type diagnosticBackend struct {
-	eventstore.Backend
+	eventlib.Backend
 	t *testing.T
 }
 
-func (b diagnosticBackend) Update(ctx context.Context, fn func(eventstore.Tx) error) error {
+func (b diagnosticBackend) Update(ctx context.Context, fn func(eventlib.Tx) error) error {
 	attempts := 0
-	err := b.Backend.Update(ctx, func(tx eventstore.Tx) error { attempts++; return fn(tx) })
+	err := b.Backend.Update(ctx, func(tx eventlib.Tx) error { attempts++; return fn(tx) })
 	if err != nil {
 		var labeled interface{ HasErrorLabel(string) bool }
 		transient, uncertain := false, false

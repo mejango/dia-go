@@ -1,7 +1,5 @@
 package dia
 
-import coremodel "github.com/mejango/dia-go/models/core"
-
 import (
 	"context"
 	"crypto/hmac"
@@ -12,9 +10,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/mejango/blossm-toolbox-go/stores/event"
 	"math/big"
 	"time"
+
+	eventlib "github.com/mejango/blossm-toolbox-go/lib/event"
+	coremodel "github.com/mejango/dia-go/models/core"
 )
 
 // MaxChallengeAttempts is the explicit per-challenge proof-attempt policy.
@@ -53,7 +53,7 @@ func (s *Service) SaveSession(ctx context.Context, token, key, email, password s
 	}
 	if ca.Version > 0 {
 		if existing.RequestHash != requestHash {
-			return ChallengeResult{}, eventstore.ErrIdempotency
+			return ChallengeResult{}, eventlib.ErrIdempotency
 		}
 		return s.challengeResult(ctx, c, cr, existing)
 	}
@@ -67,7 +67,7 @@ func (s *Service) SaveSession(ctx context.Context, token, key, email, password s
 	if e != nil {
 		return ChallengeResult{}, e
 	}
-	var events []eventstore.Input
+	var events []eventlib.Input
 	principal := account.Principal
 	if aa.Version == 0 {
 		principal = c.Context.Principal
@@ -263,10 +263,10 @@ func (s *Service) AnswerChallenge(ctx context.Context, token, key, code string) 
 			return SessionResult{}, e
 		}
 		if st.AnswerKey != answerKey {
-			return SessionResult{}, eventstore.ErrConflict
+			return SessionResult{}, eventlib.ErrConflict
 		}
 		if !hmac.Equal([]byte(st.ProofHash), []byte(proofHash)) {
-			return SessionResult{}, eventstore.ErrIdempotency
+			return SessionResult{}, eventlib.ErrIdempotency
 		}
 	} else {
 		// Reserve and bind the attempt before evaluating the guess. Reusing a request
@@ -281,7 +281,7 @@ func (s *Service) AnswerChallenge(ctx context.Context, token, key, code string) 
 				Hash     string `json:"hash"`
 			}
 			if len(op.Inputs) != 1 || decode(op.Inputs[0].Payload, &prior) != nil || !hmac.Equal([]byte(prior.Hash), []byte(proofHash)) {
-				return SessionResult{}, eventstore.ErrIdempotency
+				return SessionResult{}, eventlib.ErrIdempotency
 			}
 		} else {
 			if st.Attempts >= MaxChallengeAttempts {
@@ -297,10 +297,10 @@ func (s *Service) AnswerChallenge(ctx context.Context, token, key, code string) 
 		}
 		if st.Answered != "" {
 			if st.AnswerKey != answerKey {
-				return SessionResult{}, eventstore.ErrConflict
+				return SessionResult{}, eventlib.ErrConflict
 			}
 			if !hmac.Equal([]byte(st.ProofHash), []byte(proofHash)) {
-				return SessionResult{}, eventstore.ErrIdempotency
+				return SessionResult{}, eventlib.ErrIdempotency
 			}
 		}
 		if !CheckPassword(code, st.Code) {
@@ -318,14 +318,14 @@ func (s *Service) AnswerChallenge(ctx context.Context, token, key, code string) 
 		return SessionResult{}, ErrUnauthorized
 	}
 	if st.Answered == "" {
-		ev := append([]eventstore.Input{}, st.Events...)
+		ev := append([]eventlib.Input{}, st.Events...)
 		ev = append(ev, s.event(r, "answer", key+"/answer", a.Version, map[string]string{"answered": s.now().Format(time.RFC3339Nano), "answerKey": answerKey, "proofHash": proofHash}), s.event(st.Session, "upgrade", key+"/upgrade", sa.Version, map[string]coremodel.Ref{"principal": st.Upgrade.Principal, "account": st.Upgrade.Account}))
 		if e = s.append(ctx, ev...); e != nil {
-			if errors.Is(e, eventstore.ErrConflict) || errors.Is(e, eventstore.ErrIdempotency) || errors.Is(e, eventstore.ErrUncertain) {
+			if errors.Is(e, eventlib.ErrConflict) || errors.Is(e, eventlib.ErrIdempotency) || errors.Is(e, eventlib.ErrUncertain) {
 				var committed coremodel.ChallengeState
 				if _, lookupErr := s.load(ctx, r, &committed); lookupErr == nil && committed.Answered != "" {
 					if committed.AnswerKey != answerKey {
-						return SessionResult{}, eventstore.ErrConflict
+						return SessionResult{}, eventlib.ErrConflict
 					}
 					if hmac.Equal([]byte(committed.ProofHash), []byte(proofHash)) {
 						return s.AnswerChallenge(ctx, token, key, code)

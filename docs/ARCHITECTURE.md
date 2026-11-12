@@ -61,9 +61,9 @@ with their contexts.
 The complete original154-package inventory and59-family behavior ledger remain
 canonical in Toolbox, including delegated Dia-owned behavior:
 
-- [Capability inventory](https://github.com/mejango/blossm-toolbox-go/blob/0007d3d81d364b0c63dd8745df3c724f43b620b5/docs/capabilities.md)
-- [Behavior assertions](https://github.com/mejango/blossm-toolbox-go/blob/0007d3d81d364b0c63dd8745df3c724f43b620b5/docs/behavior-coverage.md)
-- [Machine ledger](https://github.com/mejango/blossm-toolbox-go/blob/0007d3d81d364b0c63dd8745df3c724f43b620b5/docs/behavior-coverage.json)
+- [Capability inventory](https://github.com/mejango/blossm-toolbox-go/blob/main/docs/capabilities.md)
+- [Behavior assertions](https://github.com/mejango/blossm-toolbox-go/blob/main/docs/behavior-coverage.md)
+- [Machine ledger](https://github.com/mejango/blossm-toolbox-go/blob/main/docs/behavior-coverage.json)
 
 Search `dia-go:` in machine source/test paths for application-owned records.
 Families include identity/revocation, accounts/challenges, roles/groups,
@@ -72,7 +72,7 @@ Generic and application assertions can jointly support a family; this is not a
 claim of one-to-one JS test equivalence. No package or reference test is removed
 merely because its current owner is an application repository.
 
-Links above pin the public framework source-split commit used by go.mod. Historical combined-tree logs/manifests/reviews remain unchanged and do
+See [HIERARCHY.md](HIERARCHY.md) for the framework relocation and unchanged application owners. Links below/above use main provisionally for current navigation; the prior source-split pins and evidence describe their own snapshot. Historical combined-tree logs/manifests/reviews remain unchanged and do
 not verify the current boundary. Fresh independent module, native/container and
 security gates belong to the parent verification record. Refer to this
 repository's [README](../README.md) and [PUBLICATION](PUBLICATION.md) for public
