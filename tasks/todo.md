@@ -25,14 +25,14 @@
 - [x] Move Dia models/services/runtime/routes/tests and its identity-backed example into dia-go.
 - [x] Group related Go packages/models and update all imports, CLI/build/configuration/docs.
 - [x] Add independent-consumer/dependency-boundary checks and run complete relevant gates.
-- [ ] Prepare paired reviewable branches/PRs with exact evidence and coordinated dependency pin.
+- [x] Prepare paired reviewable branches/PRs with exact evidence and coordinated dependency pin.
 
 ### Application move owner
 
 - [x] Coordinate generic auth extraction before relocating identity files.
 - [x] Move identity, wallet, runtime and executable sources with every test/document; retain package names and existing Dia executable test.
 - [x] Rewrite moved imports to Dia-owned services/runtime/httpapi; retain generic transport CORS where applicable.
-- [ ] Verify source inventory, stale import absence and scoped compilation/tests when extraction/module handoffs are ready. Parent owns module/build/root docs and final independent-public-module gates.
+- [x] Verify source inventory, stale import absence and scoped compilation/tests when extraction/module handoffs are ready. Parent owns module/build/root docs and final independent-public-module gates.
 
 Move-owner review: all43 moved files were SHA256-verified before import edits,
 including15 tests and7 Markdown files; existing cmd/dia/main_test.go retained.
@@ -45,3 +45,17 @@ build/root documentation edits by this owner. Scoped compile via a temporary
 and httpapi extraction errors plus an unavailable pubsub1.51.0 module in the
 default cache. This is not passing compile evidence; rerun after extraction and
 module-cache handoffs. Final public-module verification remains parent-owned.
+
+### Final independent verification
+
+The early extraction errors above are historical. Final independent public-module
+verification passed with GOWORK=off and the pinned Toolbox review commit: unit,
+race, vet, native PostgreSQL/MongoDB, generated configuration, security checks
+and both application container lifecycles. The document outbox ownership fix
+passed affected native and rebuilt container gates. Exact evidence and limits
+are in docs/SEPARATION.md.
+
+Prepared review: https://github.com/mejango/dia-go/pull/1 and
+https://github.com/mejango/blossm-toolbox-go/pull/1. Both remain open and unmerged;
+hosted CI was still running at handoff. Task-owned disposable database fixtures
+have been removed after verification.
