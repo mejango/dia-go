@@ -7,9 +7,10 @@ Write a checkable plan in tasks/todo.md before implementation and run
 `python3 tools/check_plan_refinement.py tasks/todo.md`. Carry these paths into
 any delegated task and preserve existing changes.
 
-The pinned Toolbox dependency owns domain and runtime implementation. Do not
-copy it here or silently override it with a local replace directive. Keep one
-implementation per rule. Verify the consumer build, tests and actual container
-lifecycle when changing the dependency or entrypoint. Cloud writes, publication,
+Dia owns all application models, policy, services, HTTP routes and runtime.
+Toolbox is a third-party framework dependency and must never depend on Dia.
+Use only its public APIs; do not commit local replace directives or duplicate its
+implementation. Verify both independent modules and actual container lifecycles
+when changing their boundary. Cloud writes, publication,
 merges and blockchain transactions require explicit user authority. Use no
 middots in documentation.

@@ -1,0 +1,63 @@
+{
+  "version": 2,
+  "signing": {
+    "provider": "local",
+    "issuer": "dia.example.test",
+    "audience": "example.test",
+    "subject": "document-peer"
+  },
+  "name": "document-api",
+  "provider": "gcp",
+  "image": "example.invalid/blossm/document:review-required",
+  "port": 8080,
+  "database": {
+    "driver": "postgres",
+    "namespace": "documents",
+    "secret": {
+      "reference": "dia-database",
+      "version": "1"
+    }
+  },
+  "publication": {
+    "topic": "projects/example-project/topics/document-events",
+    "subscription": "projects/example-project/subscriptions/document-projection"
+  },
+  "secrets": {
+    "DIA_ENCRYPTION_KEY": {
+      "reference": "dia-encryption-key",
+      "version": "1"
+    },
+    "DIA_HMAC_KEY": {
+      "reference": "dia-hmac-key",
+      "version": "1"
+    },
+    "JWT_PRIVATE_KEY": {
+      "reference": "dia-jwt-private-key",
+      "version": "1"
+    }
+  },
+  "gcp": {
+    "project": "example-project",
+    "region": "us-central1",
+    "serviceAccount": "dia-api@example-project.iam.gserviceaccount.com",
+    "invocation": "application"
+  },
+  "delivery": {
+    "tasksQueue": "projects/example-project/locations/us-central1/queues/document-delivery",
+    "url": "https://framework.example.invalid/deliveries",
+    "serviceAccount": "delivery@example-project.iam.gserviceaccount.com",
+    "audience": "https://framework.example.invalid"
+  },
+  "application": {
+    "package": "./cmd/document",
+    "binary": "document",
+    "entrypoint": "/document"
+  },
+  "env": {
+    "NETWORK": "example.test",
+    "SERVICE": "documents",
+    "INTERNAL_SUBJECT": "document-peer",
+    "IDENTITY_DATABASE_NAMESPACE": "dia_identity",
+    "PUBLICATION_MODE": "gcp"
+  }
+}

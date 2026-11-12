@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mejango/blossm-toolbox-go/diaruntime"
+	"github.com/mejango/dia-go/runtime"
 )
 
 func TestMissingNetworkFailsBeforeOpeningClients(t *testing.T) {

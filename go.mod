@@ -2,14 +2,18 @@ module github.com/mejango/dia-go
 
 go 1.26.0
 
-require github.com/mejango/blossm-toolbox-go v0.0.0-20261112135315-ec5d8542cda1
+require (
+	cloud.google.com/go/cloudtasks v1.21.0
+	github.com/ethereum/go-ethereum v1.17.10
+	github.com/googleapis/gax-go/v2 v2.27.0
+	github.com/mejango/blossm-toolbox-go v0.0.0-20261112142659-0007d3d81d36
+)
 
 require (
 	cel.dev/expr v0.25.3 // indirect
 	cloud.google.com/go v0.123.0 // indirect
 	cloud.google.com/go/auth v0.24.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.3.1 // indirect
-	cloud.google.com/go/cloudtasks v1.21.0 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/iam v1.14.0 // indirect
 	cloud.google.com/go/kms v1.35.0 // indirect
@@ -59,7 +63,6 @@ require (
 	github.com/envoyproxy/go-control-plane/envoy v1.39.1-0.20260819172001-e6e3fd93e4be // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/ethereum/c-kzg-4844/v2 v2.1.8 // indirect
-	github.com/ethereum/go-ethereum v1.17.10 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fjl/jsonw v0.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
@@ -69,7 +72,6 @@ require (
 	github.com/google/s2a-go v0.1.11 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.25 // indirect
-	github.com/googleapis/gax-go/v2 v2.27.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect

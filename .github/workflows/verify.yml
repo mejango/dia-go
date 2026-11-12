@@ -4,11 +4,13 @@ permissions:
   contents: read
 jobs:
   verify:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
     env:
       GOTOOLCHAIN: local
       GOWORK: 'off'
+      POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/blossm?sslmode=disable
+      MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0&directConnection=true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -18,14 +20,27 @@ jobs:
           cache-dependency-path: go.sum
       - run: go mod download
       - run: make check build
-      - name: Start disposable PostgreSQL
-        run: docker compose -f deploy/compose.integration.json up -d --wait postgres
+      - name: Start disposable native databases
+        run: docker compose -f deploy/compose.integration.json up -d --wait postgres mongo
+      - name: Initialize Mongo replica set
+        run: |
+          docker compose -f deploy/compose.integration.json exec -T mongo mongosh --quiet --eval 'rs.initiate({_id:"rs0",members:[{_id:0,host:"localhost:27017"}]})'
+          for attempt in $(seq 1 60); do
+            if docker compose -f deploy/compose.integration.json exec -T mongo mongosh --quiet --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Native application contracts
+        run: make native
       - name: Build and exercise the application container
         run: make container
       - name: Dependency vulnerability check
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: Verify lock integrity
         run: git diff --exit-code -- go.mod go.sum
+      - name: Database diagnostics
+        if: failure()
+        run: docker compose -f deploy/compose.integration.json logs
       - name: Remove disposable fixture
         if: always()
         run: docker compose -f deploy/compose.integration.json down -v

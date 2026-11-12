@@ -1,21 +1,21 @@
 {
-  "version": 1,
-  "runtime": "dia",
+  "version": 2,
   "signing": {
-    "provider": "local"
+    "provider": "local",
+    "issuer": "dia.example.test",
+    "audience": "example.test"
   },
   "name": "dia-api",
-  "network": "example.test",
   "provider": "aws",
   "image": "example.invalid/blossm/dia:review-required",
   "port": 8080,
-  "local": false,
   "database": {
     "driver": "mongo",
-    "namespace": "blossm",
+    "namespace": "dia_identity",
     "secret": {
       "reference": "arn:aws:secretsmanager:us-east-1:123456789012:secret:dia-database-AbCdEf"
-    }
+    },
+    "name": "diaapp"
   },
   "publication": {
     "topic": "arn:aws:sns:us-east-1:123456789012:dia-events",
@@ -48,5 +48,15 @@
     ],
     "logGroup": "/ecs/dia-api",
     "targetGroupARN": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/dia-api/0123456789abcdef"
+  },
+  "application": {
+    "package": "./cmd/dia",
+    "binary": "dia",
+    "entrypoint": "/dia"
+  },
+  "env": {
+    "NETWORK": "example.test",
+    "PUBLISHER": "aws",
+    "LOCAL_MODE": "false"
   }
 }

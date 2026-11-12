@@ -1,0 +1,31 @@
+{
+  "framework_pin": "v0.0.0-20261112142659-0007d3d81d36",
+  "go": "1.27.4",
+  "workspace_override": false,
+  "local_replace": false,
+  "gates": {
+    "independent-check-build": {
+      "file": "docs/verification-logs/separation/independent-check-build.log.gz",
+      "sha256": "940a856ae347ec2bcca6fb5de9282f3ebad74df426cf4e06bb0b1e771558f263"
+    },
+    "native-full": {
+      "file": "docs/verification-logs/separation/native-full.log.gz",
+      "sha256": "f24fc1734b286b93af89d3849d48116a4723e0bf42d168e24e2e3b0083b1f506"
+    },
+    "native-ownership-followup": {
+      "file": "docs/verification-logs/separation/native-ownership-followup.log.gz",
+      "sha256": "064b5f7e901af00973dbdd7b42b1122f19584977615ebd41c4f1d4d0b67ae03b"
+    },
+    "vulnerabilities": {
+      "file": "docs/verification-logs/separation/vulnerabilities.log.gz",
+      "sha256": "3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5"
+    },
+    "container-final": {
+      "file": "docs/verification-logs/separation/container-final.log.gz",
+      "sha256": "633c2f5cfb4f8480cded5c2781a79d3fd4c6af48088e4f7e1423e61c5a02d03f"
+    }
+  },
+  "final_image": "sha256:fda5f74467207d2d0b5192a9207b9297cb338da71670480c2ae2293389126d5a",
+  "scope_note": "Full independent gates passed before the focused document outbox-ownership fix. The changed command and integration packages then passed native race/vet, and both rebuilt executable containers passed. Domain/storage implementation remained unchanged.",
+  "live_environment_verified": false
+}

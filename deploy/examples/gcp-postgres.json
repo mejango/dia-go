@@ -1,18 +1,17 @@
 {
-  "version": 1,
-  "runtime": "dia",
+  "version": 2,
   "signing": {
-    "provider": "local"
+    "provider": "local",
+    "issuer": "dia.example.test",
+    "audience": "example.test"
   },
   "name": "dia-api",
-  "network": "example.test",
   "provider": "gcp",
   "image": "example.invalid/blossm/dia:review-required",
   "port": 8080,
-  "local": false,
   "database": {
     "driver": "postgres",
-    "namespace": "blossm",
+    "namespace": "dia_identity",
     "secret": {
       "reference": "dia-database",
       "version": "1"
@@ -41,5 +40,15 @@
     "region": "us-central1",
     "serviceAccount": "dia-api@example-project.iam.gserviceaccount.com",
     "invocation": "application"
+  },
+  "application": {
+    "package": "./cmd/dia",
+    "binary": "dia",
+    "entrypoint": "/dia"
+  },
+  "env": {
+    "NETWORK": "example.test",
+    "PUBLISHER": "gcp",
+    "LOCAL_MODE": "false"
   }
 }

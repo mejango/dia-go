@@ -6,3 +6,21 @@
 - Bind derived requests to immutable intent, including historical source versions.
 - Freeze source before recording full verification; source mappings are not behavioral proof.
 - One network is one signing trust domain. Delivery identity is distinct from store-peer identity.
+
+## 2026-11-12: Framework consumers own their applications
+
+The user rejected keeping Dia domain/runtime code in Toolbox. Treat Dia as an
+independent third-party consumer: Toolbox must build and test without importing
+Dia or owning Dia policies, models, routes, or entrypoints. A thin application
+wrapper does not establish that boundary. Preserve capability grouping in Go
+folders; enforce dependency direction with a repository check and test the
+application against the public framework module, not only a sibling workspace.
+
+## Paired configuration needs composition checks
+
+Individually valid identity and document examples can still address different
+identity stores or compete for the same publication queue. Verify the pair:
+same physical database and trust, matching identity prefix, separate document
+prefix and separate publication targets. A generic schema check alone cannot
+prove these application relationships. deployment's paired-example regression
+owns this check; never infer composition from four independent green configs.
