@@ -1,0 +1,6 @@
+/bin/dia
+.git/
+.DS_Store
+.env
+.env.local
+/deploy/generated/

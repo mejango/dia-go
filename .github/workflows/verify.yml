@@ -1,0 +1,31 @@
+name: Verify Dia Go
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GOTOOLCHAIN: local
+      GOWORK: 'off'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.4'
+          cache: true
+          cache-dependency-path: go.sum
+      - run: go mod download
+      - run: make check build
+      - name: Start disposable PostgreSQL
+        run: docker compose -f deploy/compose.integration.json up -d --wait postgres
+      - name: Build and exercise the application container
+        run: make container
+      - name: Dependency vulnerability check
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Verify lock integrity
+        run: git diff --exit-code -- go.mod go.sum
+      - name: Remove disposable fixture
+        if: always()
+        run: docker compose -f deploy/compose.integration.json down -v
